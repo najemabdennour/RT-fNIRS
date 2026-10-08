@@ -1,0 +1,68 @@
+{
+  "baseline_duration": 5,
+  "pre_baseline_delay": 5,
+  "total_trials": 5,
+  "fullscreen": false,
+  "screen_width": 1024,
+  "screen_height": 768,
+  "font_size": 36,
+  "trial_target_sequence": [],
+  "markers": {
+    "baseline_start": "baseline_start",
+    "baseline_end": "baseline_end",
+    "run_onset": "run_onset",
+    "run_offset": "run_offset",
+    "trial_index": "trial_index",
+    "target_class": "target_class"
+  },
+  "steps": [
+    {
+      "type": "Fixation Cross",
+      "content": "",
+      "shape": "Circle",
+      "color": "White",
+      "size": 30,
+      "duration": 1.5,
+      "marker": "fixation_onset",
+      "feedback_style": "Text",
+      "show_feedback_label": true,
+      "show_percentage": true
+    },
+    {
+      "type": "Shape",
+      "content": "",
+      "shape": "Circle",
+      "color": "Green",
+      "size": 80,
+      "duration": 6.0,
+      "marker": "trial_onset",
+      "feedback_style": "Text",
+      "show_feedback_label": true,
+      "show_percentage": true
+    },
+    {
+      "type": "Feedback Window",
+      "content": "",
+      "shape": "Circle",
+      "color": "White",
+      "size": 48,
+      "duration": 2.0,
+      "marker": "request_feedback",
+      "feedback_style": "Text",
+      "show_feedback_label": true,
+      "show_percentage": true
+    },
+    {
+      "type": "Text Prompt",
+      "content": "Rest",
+      "shape": "Circle",
+      "color": "White",
+      "size": 48,
+      "duration": 3.0,
+      "marker": "trial_offset",
+      "feedback_style": "Text",
+      "show_feedback_label": true,
+      "show_percentage": true
+    }
+  ]
+}

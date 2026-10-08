@@ -1,0 +1,34 @@
+# Real-Time fNIRS & Neurofeedback Toolbox - Python dependencies
+# Tested against Python 3.9 - 3.14. See README.md "Requirements & Compatibility"
+# for platform notes (liblsl, pygame display backend, etc).
+
+# --- GUI framework ---
+PyQt5>=5.15,<6.0
+
+# --- Data handling ---
+pandas>=1.5
+numpy>=1.23
+
+# --- Signal processing ---
+scipy>=1.9
+
+# --- Machine learning (decoder training + realtime inference) ---
+scikit-learn>=1.1
+joblib>=1.2
+
+# --- Plotting (Online Streaming Monitor) ---
+matplotlib>=3.6
+
+# --- Lab Streaming Layer bindings ---
+pylsl>=1.16
+# NOTE: pylsl is a wrapper around the native liblsl shared library, which is
+# NOT installed by pip. See README.md for platform-specific install steps.
+
+# --- Experiment Design tab (pygame paradigm runner) ---
+pygame>=2.1
+
+# --- Optional ---
+# nilearn is only used by the offline/real-time 'detrend' pipeline step.
+# If it isn't installed, that step is skipped with a logged warning instead
+# of failing - install it only if you need nilearn-based linear detrending.
+# nilearn>=0.10
