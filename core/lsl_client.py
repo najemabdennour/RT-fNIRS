@@ -1,4 +1,7 @@
-"""Background QThread workers for resolving and probing LSL streams without blocking the UI."""
+"""Background QThread workers for resolving, probing and recording LSL streams without blocking the UI."""
+import threading
+import time
+
 from PyQt5.QtCore import QThread, pyqtSignal
 from pylsl import StreamInlet, resolve_byprop
 
@@ -86,3 +89,82 @@ class MarkerDiagnosticWorker(QThread):
             self.diagnostic_success.emit(diag_data)
         except Exception as e:
             self.diagnostic_failure.emit(str(e))
+
+
+class StreamAcquisitionWorker(QThread):
+    """
+    Records a live LSL stream into a DataSession on a background thread.
+
+    Pulls data in chunks and appends each sample (polling the marker inlet
+    once per sample, see DataSession.process_and_append), so recording keeps
+    up with the stream no matter how busy the GUI thread is. The worker owns
+    both inlets while running: stop() it before closing them.
+    """
+    error = pyqtSignal(str)
+
+    def __init__(self, inlet, marker_inlet, session, idle_sleep=0.01):
+        """
+        Args:
+            inlet: StreamInlet of the data stream.
+            marker_inlet: StreamInlet of the marker stream, or None.
+            session: DataSession receiving the samples.
+            idle_sleep: seconds to sleep when no data is waiting.
+        """
+        super().__init__()
+        self.inlet = inlet
+        self.marker_inlet = marker_inlet
+        self.session = session
+        self.idle_sleep = idle_sleep
+        self.is_running = True
+
+    def run(self):
+        """Pulls and records chunks until stopped; emits `error` and exits if the inlet fails."""
+        try:
+            while self.is_running:
+                samples, timestamps = self.inlet.pull_chunk(timeout=0.0)
+                if not timestamps:
+                    time.sleep(self.idle_sleep)
+                    continue
+                for sample, timestamp in zip(samples, timestamps):
+                    self.session.process_and_append(sample, timestamp, self.marker_inlet)
+        except Exception as e:
+            self.error.emit(str(e))
+
+    def stop(self):
+        """Asks the loop to finish and waits for the thread to exit."""
+        self.is_running = False
+        self.wait()
+
+
+def release_inlets_async(inlets):
+    """
+    Closes and releases LSL inlets on a background thread.
+
+    liblsl's inlet teardown blocks for about 0.5 s per inlet while its
+    internal threads shut down; doing it here keeps the GUI responsive.
+
+    Takes ownership: `inlets` is a list the caller fills and keeps no other
+    references to; it is emptied here, so the background thread holds the
+    last reference and the teardown always runs there (if the caller still
+    held one, the teardown could end up back on the caller's thread). None
+    entries are ignored. Returns the thread, or None if there was nothing to
+    release.
+    """
+    pending = [inlet for inlet in inlets if inlet is not None]
+    inlets.clear()
+    if not pending:
+        return None
+
+    def _release(pending):
+        """Closes each inlet, then drops the last reference so liblsl destroys it here."""
+        while pending:
+            inlet = pending.pop()
+            try:
+                inlet.close_stream()
+            except Exception:
+                pass
+            del inlet
+
+    thread = threading.Thread(target=_release, args=(pending,), name="lsl-inlet-release", daemon=True)
+    thread.start()
+    return thread

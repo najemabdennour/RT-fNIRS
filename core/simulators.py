@@ -1,7 +1,8 @@
 # core/simulators.py
 """Synthetic LSL outlets (fNIRS data and experiment markers) for testing without hardware."""
-import time
 import math
+import threading
+import time
 from random import random as rand
 from PyQt5.QtCore import QThread
 from pylsl import StreamInfo, StreamOutlet, local_clock
@@ -75,35 +76,39 @@ class SyntheticMarkerThread(QThread):
         super().__init__()
         self.stream_name = name
         self.is_running = True
+        self._stop_event = threading.Event()
+
+    def _pause(self, seconds):
+        """Waits up to `seconds`, returning early (False) as soon as stop() is called; True otherwise."""
+        return not self._stop_event.wait(seconds)
 
     def run(self):
         """Create the marker outlet and emit the run/trial marker sequence until stopped."""
         # 2 channels: [label, value]
         info = StreamInfo(self.stream_name, 'Markers', 2, 0, 'string', 'synth_markers_01')
         outlet = StreamOutlet(info)
-        time.sleep(1.5) # Give consumers time to discover the outlet before the first marker
-
-        if not self.is_running: return
+        # Give consumers time to discover the outlet before the first marker.
+        # Every wait is interruptible, so stop() returns immediately.
+        if not self._pause(1.5): return
         outlet.push_sample(['run_onset', '0'])
 
         trial_count = 0
         while self.is_running:
-            time.sleep(3) # Inter-trial interval
-            if not self.is_running: break
+            if not self._pause(3): return  # Inter-trial interval
 
             outlet.push_sample(['trial_onset', '0'])
             trial_count += 1
-            time.sleep(1)
+            if not self._pause(1): return
             outlet.push_sample(['trial_index', str(trial_count)])
-            time.sleep(1)
+            if not self._pause(1): return
             outlet.push_sample(['target', '1'])
 
-            time.sleep(3)
-            if not self.is_running: break
+            if not self._pause(3): return
 
             outlet.push_sample(['trial_offset', '0'])
 
     def stop(self):
-        """Signal the marker loop to exit and block until the thread finishes."""
+        """Signal the marker loop to exit (interrupting any wait) and block until the thread finishes."""
         self.is_running = False
+        self._stop_event.set()
         self.wait()

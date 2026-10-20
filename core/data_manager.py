@@ -1,13 +1,24 @@
 """In-memory recording buffer for a live LSL session and its CSV export."""
+import threading
+
 import pandas as pd
 
 from core.io_utils import write_csv
 
 
 class DataSession:
-    """Buffers streamed samples with their aligned event markers and exports them to CSV."""
+    """
+    Buffers streamed samples with their aligned event markers and exports them to CSV.
+
+    Thread-safe: an acquisition thread appends while the GUI thread reads, so
+    every access goes through one lock. Readers should use snapshot() rather
+    than the raw lists, which could otherwise be caught mid-append (e.g. a
+    sample added but its timestamp not yet).
+    """
     def __init__(self):
         """Create empty sample, timestamp and per-marker-type buffers."""
+        self._lock = threading.RLock()
+        self.saved_count = 0  # samples covered by the last successful export
         self.samples = []
         self.timestamps = []
         self.trial_onset_marker = []
@@ -18,13 +29,38 @@ class DataSession:
 
     def reset(self):
         """Clears buffers to prepare for a fresh recording session."""
-        self.samples.clear()
-        self.timestamps.clear()
-        self.trial_onset_marker.clear()
-        self.trial_offset_marker.clear()
-        self.run_onset_marker.clear()
-        self.run_offset_marker.clear()
-        self.cached_visual_markers.clear()
+        with self._lock:
+            self.samples.clear()
+            self.timestamps.clear()
+            self.trial_onset_marker.clear()
+            self.trial_offset_marker.clear()
+            self.run_onset_marker.clear()
+            self.run_offset_marker.clear()
+            self.cached_visual_markers.clear()
+            self.saved_count = 0
+
+    def unsaved_count(self):
+        """Number of samples recorded since the last successful export (all of them if never exported)."""
+        with self._lock:
+            return len(self.samples) - self.saved_count
+
+    def __len__(self):
+        """Number of samples recorded so far."""
+        with self._lock:
+            return len(self.samples)
+
+    def snapshot(self, n_recent):
+        """
+        Returns a consistent copy of the most recent data for display.
+
+        Returns:
+            (samples, timestamps, markers, total_samples): the last n_recent
+            samples and their timestamps, every cached (timestamp, label)
+            marker, and the total number of samples recorded.
+        """
+        with self._lock:
+            return (self.samples[-n_recent:], self.timestamps[-n_recent:],
+                    list(self.cached_visual_markers), len(self.samples))
 
     def process_and_append(self, sample, timestamp, marker_inlet):
         """
@@ -36,11 +72,12 @@ class DataSession:
         leave all four None), and (timestamp, label) is cached for plotting.
         Without a marker, all four marker columns get None for this row.
         """
-        self.samples.append(sample)
-        self.timestamps.append(timestamp)
+        m_sample, m_timestamp = marker_inlet.pull_sample(timeout=0.0) if marker_inlet else (None, None)
 
-        if marker_inlet:
-            m_sample, m_timestamp = marker_inlet.pull_sample(timeout=0.0)
+        with self._lock:
+            self.samples.append(sample)
+            self.timestamps.append(timestamp)
+
             if m_sample is not None:
                 trigger = str(m_sample[0])
 
@@ -52,11 +89,9 @@ class DataSession:
                 self.cached_visual_markers.append((m_timestamp, trigger))
             else:
                 self._append_null_markers()
-        else:
-            self._append_null_markers()
 
     def _append_null_markers(self):
-        """Append None to every marker column for a sample with no marker."""
+        """Append None to every marker column for a sample with no marker (caller holds the lock)."""
         self.trial_onset_marker.append(None)
         self.trial_offset_marker.append(None)
         self.run_onset_marker.append(None)
@@ -68,16 +103,23 @@ class DataSession:
         'timestamps' and the four marker columns.
 
         Returns False (writing nothing) if the buffer is empty, else True.
+        On success, the exported samples count as saved (see unsaved_count).
         """
-        if not self.samples:
-            return False
+        with self._lock:
+            if not self.samples:
+                return False
 
-        df = pd.DataFrame(self.samples, columns=channel_names)
-        df["timestamps"] = self.timestamps
-        df["trial_onset"] = self.trial_onset_marker
-        df["trial_offset"] = self.trial_offset_marker
-        df["run_onset"] = self.run_onset_marker
-        df["run_offset"] = self.run_offset_marker
+            # Built under the lock, so the export is a consistent cut even while recording continues.
+            df = pd.DataFrame(self.samples, columns=channel_names)
+            df["timestamps"] = self.timestamps
+            df["trial_onset"] = self.trial_onset_marker
+            df["trial_offset"] = self.trial_offset_marker
+            df["run_onset"] = self.run_onset_marker
+            df["run_offset"] = self.run_offset_marker
 
         write_csv(df, file_path)
+        with self._lock:
+            # Guard against a reset() that happened while the file was being written.
+            if len(df) <= len(self.samples):
+                self.saved_count = len(df)
         return True
