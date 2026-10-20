@@ -16,6 +16,7 @@ Pure numpy/scipy math, no pandas, no state.
 | `calculate_scalp_coupling_index(w1_series, w2_series)` | Pearson correlation between two wavelength channels of an optode pair; 0.0 if either has zero variance. |
 | `calculate_coefficient_of_variation(series)` | `std / mean * 100`; `inf` if mean is 0. |
 | `apply_mbll_inversion(od_w1, od_w2, e_inv)` | Applies the inverted extinction-coefficient matrix to two optical-density series, returning stacked HbO/HbR concentration rows. |
+| `optical_density(intensity)` | Raw intensity → optical density, `-ln(I / mean(I))` per column. If any value is ≤ 0, values are replaced by their absolute value and clipped at the smallest non-zero channel minimum, so the log is always defined. Returns `(od, n_non_positive)`. |
 
 ---
 
@@ -49,10 +50,11 @@ result = engine.run_steps(dataframe, pipeline_steps, params, excluded_cols=[...]
 
 | id | What it does |
 |---|---|
+| `optical_density` | Converts raw intensity to optical density (`math_kernel.optical_density`). Reads no params. Column names are kept; the result is tagged `data.attrs['fnirs_signal'] = 'od'` so later steps adapt (see below). Skipped with a warning if the data is already OD or HbO/HbR. |
 | `channel_filter` | Manual keep/exclude by name (`manual_exclude_channels` / `manual_keep_channels` in `params`). Matches both the exact column name and its base name (pre-`rsplit('_', 1)`), so a name saved before or after MBLL still matches. Independent of SCI/SQA's live thresholds — for reproducing a fixed exclusion list. |
 | `sci` | Drops both wavelength columns of an optode pair if their cross-wavelength correlation is below `sci_threshold`. |
-| `sqa` | Drops individual channels whose coefficient of variation exceeds `cv_threshold`. |
-| `mbll` | Converts paired wavelength columns to `_HbO`/`_HbR` concentration columns via the Modified Beer-Lambert Law. Requires `mbll_wavelengths` and matching `extinction_coefficients` entries. |
+| `sqa` | Drops individual channels whose coefficient of variation exceeds `cv_threshold`. On OD input it uses `exp(-OD) = I / mean(I)`, which has exactly the CV of the original intensity, so rejections are the same as running SQA before OD. |
+| `mbll` | Converts paired wavelength columns to `_HbO`/`_HbR` concentration columns via the Modified Beer-Lambert Law. Requires `mbll_wavelengths` and matching `extinction_coefficients` entries. Accepts raw intensity (converted to OD internally) or OD from the `optical_density` step (used as is; results are identical). Tags its output `'hb'`. Warns when supposed raw intensity contains values ≤ 0, which usually means an OD checkpoint CSV was reloaded without re-running the OD step. |
 | `filter` | Butterworth bandpass (`low_cut`, `high_cut`, `fs`, `butterworth_order`). Checks the buffer length against `bandpass_min_samples()` first; if it is too short, or the parameters are invalid (e.g. high cut above Nyquist), the data passes through **unfiltered** and a warning naming the required length is issued via `warn()`. |
 | `detrend` | Linear batch detrending via `nilearn.signal._detrend` (optional dependency — skipped with a warning if not installed). Batch count is clamped to the buffer length. |
 | `scaling` | `StandardScaler` or `MinMaxScaler` (`scaler_type`) across signal columns. |
@@ -62,6 +64,15 @@ Each step is a separate `_step_<name>(data, params, excluded_cols)` method
 registered in `self._step_handlers`; see
 [`developer_guide.md`](developer_guide.md#4-worked-example-adding-a-signal-step)
 for adding one.
+
+### Signal type tracking
+
+`DataFrame.attrs['fnirs_signal']` (`SIGNAL_TYPE_ATTR`) records what the
+signal columns hold: absent = raw intensity, `'od'` = optical density,
+`'hb'` = HbO/HbR. pandas carries `attrs` through every operation the
+pipeline uses, but **not through a CSV**: a checkpoint saved after the OD
+step reloads as "raw intensity", so reloaded OD data must not be fed to
+`mbll` (it warns).
 
 ### Rejection tracking
 

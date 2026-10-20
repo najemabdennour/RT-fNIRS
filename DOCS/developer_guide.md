@@ -48,12 +48,13 @@ then in the app.
 is a separate **strategy method** registered in a dispatch table:
 
 ```python
-SIGNAL_STEP_ORDER = ['channel_filter', 'sci', 'sqa', 'mbll', 'filter', 'detrend', 'scaling']
+SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'mbll', 'filter', 'detrend', 'scaling']
 
 class SignalPreprocessor:
     def __init__(self, log_callback=None, warning_callback=None):
         ...
         self._step_handlers = {
+            'optical_density': self._step_optical_density,
             'channel_filter': self._step_channel_filter,
             'sci': self._step_sci,
             'sqa': self._step_sqa,
@@ -96,6 +97,11 @@ The pipeline is built from a few small pieces:
   DataFrame plumbing, the logging and the edge-case handling around them.
 - `SIGNAL_STEP_ORDER` documents the physically sensible default order.
   Users can still reorder steps in the UI.
+- **Signal type.** `data.attrs[SIGNAL_TYPE_ATTR]` says what the channels
+  hold (absent = raw intensity, `'od'`, `'hb'`). A step that changes the
+  signal type must set it, as `_step_optical_density` and `_step_mbll` do.
+  A step that needs a particular type should check it and `warn()` + skip
+  otherwise, as `_step_optical_density` does when the data is already OD.
 
 The same engine runs in:
 
@@ -135,7 +141,7 @@ from core.math_kernel import (
     savgol_smooth,
 )
 
-SIGNAL_STEP_ORDER = ['channel_filter', 'sci', 'sqa', 'mbll', 'smooth', 'filter', 'detrend', 'scaling']
+SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'mbll', 'smooth', 'filter', 'detrend', 'scaling']
 
 # in __init__:
         self._step_handlers = {

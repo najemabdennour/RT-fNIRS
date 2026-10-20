@@ -83,7 +83,7 @@ Three concerns in one tab:
 
 1. **Session merge** — a thin UI over `core.offline_processor.OfflineSessionCombiner`: pick or auto-discover today's recordings/behavioral folders, combine per-run CSVs into one session file.
 2. **Experiment profile selector** — the *Active Experiment* dropdown lists `config.EXPERIMENT_PROFILES` (default `config.DEFAULT_EXPERIMENT`). The selection is read from the dropdown and passed explicitly to the session merge and the pipeline (`params['active_experiment']`); it decides whether a behavioral log is mandatory and how `epoch_prep` aligns it. *Register Profile* adds a session-only profile from a name + comma-separated column list via `config.register_experiment_profile()` (label column = `condition` if listed).
-3. **Pipeline** — a `PipelineStepTable` (channel_filter, sci, sqa, mbll, epoch_prep, filter, detrend, scaling, averaging, block_avg) driving `core.offline_processor.OfflineDataPreprocessor.run_preprocessing_pipeline`, with per-step checkpoint export. Engine warnings (e.g. a skipped filter) appear in the log terminal at WARNING level.
+3. **Pipeline** — a `PipelineStepTable` (optical_density, channel_filter, sci, sqa, mbll, epoch_prep, filter, detrend, scaling, averaging, block_avg) driving `core.offline_processor.OfflineDataPreprocessor.run_preprocessing_pipeline`, with per-step checkpoint export. Engine warnings (e.g. a skipped filter) appear in the log terminal at WARNING level.
 
 Also hosts the **Manual Channel Filter List** panel: type/paste channel
 names or load a saved list, and — after a run where SCI/SQA actually
@@ -114,7 +114,7 @@ loop runs on a background `QThread`, `NeurofeedbackWorker`.
 - **Signal Source** — target stream type selector (NIRS/EEG/MEG), mirroring `online_tab.py`.
 - **Neurofeedback Decoder Configuration** — model path, co-adaptation toggle + decoder choice + base training data path, and a **"Use Co-adapted Decoder for Live Predictions"** checkbox (see Co-adaptation below).
 - **Channel Filter List** — load a channel-exclusion list (e.g. one exported from the Offline tab) for the real-time `channel_filter` step.
-- **Real-Time Preprocessing Pipeline** (`CollapsibleSection`, collapsed by default) — a `PipelineStepTable` (channel_filter, sci, sqa, mbll, filter, detrend, scaling, `averaging (feature_vector)`), every step unchecked by default, plus the numeric threshold/filter/scaler parameter fields.
+- **Real-Time Preprocessing Pipeline** (`CollapsibleSection`, collapsed by default) — a `PipelineStepTable` (optical_density, channel_filter, sci, sqa, mbll, filter, detrend, scaling, `averaging (feature_vector)`), plus the numeric threshold/filter/scaler parameter fields. `optical_density` runs by default (`config.DEFAULT_PREPROC_CONFIG` `enable_od`); every other step is unchecked. Enable a step only if the deployed model was trained on data processed the same way.
 
 **Worker lifecycle (`NeurofeedbackWorker.run()`):**
 

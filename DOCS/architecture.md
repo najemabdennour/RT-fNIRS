@@ -82,6 +82,10 @@ feature row a decoder expects.
   experiment" state.
 - **CSV I/O.** All reads/writes go through `core.io_utils`, which strips
   leaked pandas index columns (`Unnamed: 0`) so they never become features.
+- **Signal type.** The signal engine tags DataFrames with
+  `attrs['fnirs_signal']` (`'od'` after `optical_density`, `'hb'` after
+  `mbll`) so later steps adapt to earlier conversions: SQA evaluates the
+  intensity-equivalent CV on OD, and MBLL skips its own OD conversion.
 - **Warnings.** Non-fatal problems in the signal engine (e.g. a filter
   skipped on a too-short buffer) go through `SignalPreprocessor.warn()` and
   appear at WARNING level in the Offline and Neurofeedback logs.

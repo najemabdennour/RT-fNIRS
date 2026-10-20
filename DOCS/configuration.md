@@ -25,6 +25,7 @@ session's run.
 | `detrend` | `True` | Offline pipeline's default "run" state for the `detrend` step |
 | `averaging` | `True` | Offline pipeline's default "run" state for the `averaging` step |
 | `block_avg` | `True` | Offline pipeline's default "run" state for the `block_avg` step |
+| `enable_od` | `True` | Default "run" state of the `optical_density` step (Offline and Neurofeedback) |
 | `enable_sci` | `False` | Offline pipeline's default "run" state for the `sci` step |
 | `enable_sqa` | `True` | Offline pipeline's default "run" state for the `sqa` step |
 | `sqa_cv_threshold` | `7.5` | SQA coefficient-of-variation rejection limit (%) |
