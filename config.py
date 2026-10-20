@@ -20,6 +20,9 @@ DEFAULT_PREPROC_CONFIG = {
     "averaging": True,
     "block_avg": True,
 
+    # Optical Density
+    "enable_od": True,                  # Optical density conversion (first step)
+
     # Quality Assessment & MBLL Conversion
     "enable_sci": False,
     "enable_sqa": True,

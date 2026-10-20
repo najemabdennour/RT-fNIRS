@@ -506,6 +506,9 @@ class NeurofeedbackTab(QWidget):
         preproc_layout.setSpacing(8)
 
         pipeline_steps_spec = [
+            ("optical_density", "Optical Density Conversion",
+             "Converting raw intensity to optical density",
+             defaults["enable_od"]),
             ("channel_filter", "Manual Channel Filter",
              "Drops the channels loaded above by name. A fixed exclusion list keeps the "
              "feature set consistent trial-to-trial, unlike live SCI/SQA rejection.",

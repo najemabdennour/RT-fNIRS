@@ -161,6 +161,7 @@ class OfflineAnalysisTab(QWidget):
         prep_main_layout.setSpacing(12)
 
         default_steps = [
+            ("optical_density", "Optical Density Conversion", "Converting raw intensity to optical density", defaults["enable_od"]),
             ("channel_filter", "Manual Channel Filter", "Drops/keeps channels by exact name from a typed or loaded list - e.g. re-apply a previous run's SCI/SQA rejections", False),
             ("sci", "Scalp Coupling Index (SCI)", "Validates optode contact quality via cross-wavelength correlation", defaults["enable_sci"]),
             ("sqa", "Signal Quality Assessment (SQA)", "Filters individual noisy channels via standard Coefficient of Variation (CV)", defaults["enable_sqa"]),

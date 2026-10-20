@@ -184,7 +184,7 @@ class DecoderTrainingTab(QWidget):
         self.table_results.itemSelectionChanged.connect(self.on_table_row_selected)
         results_layout.addWidget(self.table_results)
 
-        self.btn_save_csv = QPushButton("\U0001F4BE Save Evaluation Table (CSV)...")
+        self.btn_save_csv = QPushButton("Save Evaluation Table (CSV)...")
         self.btn_save_csv.setEnabled(False)
         self.btn_save_csv.setStyleSheet("background-color: #383838; color: white; padding: 6px; font-size: 11px;")
         self.btn_save_csv.clicked.connect(self.save_evaluation_table_csv)

@@ -15,19 +15,41 @@ channels. Paired-wavelength channels are expected to be named
 import warnings
 
 import numpy as np
+import pandas as pd
 
 from core.math_kernel import (
     butter_bandpass_filter,
     bandpass_min_samples,
     calculate_scalp_coupling_index,
     calculate_coefficient_of_variation,
-    apply_mbll_inversion
+    apply_mbll_inversion,
+    optical_density,
 )
 
-# Documents the order that makes physical sense by default (manual overrides
-# -> quality control -> concentration conversion -> filtering/detrending ->
-# scaling). Callers are free to run any subset, in any order they configure.
-SIGNAL_STEP_ORDER = ['channel_filter', 'sci', 'sqa', 'mbll', 'filter', 'detrend', 'scaling']
+# Documents the order that makes physical sense by default (OD conversion ->
+# manual overrides -> quality control -> concentration conversion ->
+# filtering/detrending -> scaling). Callers are free to run any subset, in any
+# order they configure.
+SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'mbll', 'filter', 'detrend', 'scaling']
+
+# DataFrame.attrs key recording what the signal columns hold: absent = raw
+# intensity, 'od' = optical density, 'hb' = HbO/HbR concentrations. Lets later
+# steps adapt to an earlier 'optical_density' step (pandas propagates attrs
+# through the operations the pipeline uses, but not through a CSV round-trip).
+SIGNAL_TYPE_ATTR = 'fnirs_signal'
+
+def _with_columns(data, cols, values):
+    """
+    Returns a copy of data with the given columns replaced by the 2-D array
+    `values` (n_samples x len(cols)), keeping the original column order and
+    attrs. Building the frame in one block is far faster than
+    `data[cols] = values` on thousands of channels, and never modifies `data`.
+    """
+    replaced = pd.DataFrame(values, columns=cols, index=data.index)
+    kept = data.drop(columns=cols)
+    out = pd.concat([kept, replaced], axis=1)[list(data.columns)]
+    out.attrs = dict(data.attrs)
+    return out
 
 
 class SignalPreprocessor:
@@ -48,6 +70,7 @@ class SignalPreprocessor:
         # 'channel_filter', so short/noisy real-time buffers don't re-decide them.
         self.rejected_channels = []
         self._step_handlers = {
+            'optical_density': self._step_optical_density,
             'channel_filter': self._step_channel_filter,
             'sci': self._step_sci,
             'sqa': self._step_sqa,
@@ -117,6 +140,40 @@ class SignalPreprocessor:
 
     # Step implementations
 
+    def _step_optical_density(self, data, params, excluded_cols):
+        """
+        Converts raw intensity signal columns to optical density:
+        OD = -ln(|I| / mean(|I|)) per channel over the given buffer. If any
+        intensity is <= 0, values are replaced by their absolute value and
+        clipped at the smallest non-zero channel minimum (with a warning), so
+        the log is always defined.
+
+        Reads no params. Column names are kept, and the result is marked as OD
+        (data.attrs[SIGNAL_TYPE_ATTR] = 'od') so later steps adapt: 'sqa'
+        evaluates the equivalent intensity CV and 'mbll' skips its own OD
+        conversion. Data that is already OD (or HbO/HbR) is returned unchanged
+        with a warning.
+        """
+        signal_type = data.attrs.get(SIGNAL_TYPE_ATTR)
+        if signal_type in ('od', 'hb'):
+            self.warn(f"Optical density conversion SKIPPED - the data is already "
+                      f"{'optical density' if signal_type == 'od' else 'HbO/HbR concentration'}.")
+            return data
+
+        signal_cols = [c for c in data.columns if c not in excluded_cols]
+        if not signal_cols:
+            return data
+
+        self.log(f"[OD Engine] Converting {len(signal_cols)} raw intensity channel(s) to optical density...")
+        od, n_non_positive = optical_density(data[signal_cols].values)
+        if n_non_positive:
+            self.warn(f"Non-positive intensities encountered ({n_non_positive} sample(s)) during optical "
+                      f"density conversion - set to abs(x) and clipped at the smallest non-zero channel "
+                      f"minimum. Likely hardware or movement artifacts.")
+        data = _with_columns(data, signal_cols, od)
+        data.attrs[SIGNAL_TYPE_ATTR] = 'od'
+        return data
+
     def _step_channel_filter(self, data, params, excluded_cols):
         """
         Manual, name-based channel keep/exclude filter.
@@ -184,8 +241,10 @@ class SignalPreprocessor:
         signal_cols = [c for c in data.columns if c not in excluded_cols]
 
         self.log(f"[SCI Engine] Evaluating optical scalp coupling contact thresholds (Limit: {sci_threshold})...")
-        base_channels = set([c.rsplit('_', 1)[0] for c in signal_cols if '_' in c])
+        base_channels = dict.fromkeys(c.rsplit('_', 1)[0] for c in signal_cols if '_' in c)
 
+        # Dropped once at the end: dropping inside the loop copies the whole frame per pair.
+        cols_to_drop = []
         for base in base_channels:
             ch_w1, ch_w2 = f"{base}_{wavelengths[0]}", f"{base}_{wavelengths[1]}"
             if ch_w1 in data.columns and ch_w2 in data.columns:
@@ -193,9 +252,11 @@ class SignalPreprocessor:
                 if r_val < sci_threshold:
                     self.log(f" -> [REJECTED] Base Channel '{base}' dropped via poor skin contact metrics. SCI = {r_val:.3f}")
                     self.rejected_channels.append({'channel': base, 'reason': 'sci', 'metric': round(float(r_val), 4)})
-                    data = data.drop(columns=[ch_w1, ch_w2], errors='ignore')
+                    cols_to_drop += [ch_w1, ch_w2]
                 else:
                     self.log(f" -> [PASSED] Base Channel '{base}' verified clean. SCI = {r_val:.3f}")
+        if cols_to_drop:
+            data = data.drop(columns=cols_to_drop, errors='ignore')
         return data
 
     def _step_sqa(self, data, params, excluded_cols):
@@ -205,23 +266,33 @@ class SignalPreprocessor:
 
         params:
           'cv_threshold' (default 7.5): maximum |CV| in percent.
-        Rejected column names are recorded in self.rejected_channels. Meant
-        for raw intensities (run before 'mbll'): zero-mean signals give huge CVs.
+        Rejected column names are recorded in self.rejected_channels.
+
+        The CV is an intensity measure. On optical density data (after the
+        'optical_density' step) it is computed on exp(-OD) = I / mean(I),
+        which has exactly the CV of the original intensity, so results match
+        running SQA before the OD conversion. Don't run it after 'mbll'.
         """
         cv_threshold = params.get('cv_threshold', 7.5)
         signal_cols = [c for c in data.columns if c not in excluded_cols]
+        is_od = data.attrs.get(SIGNAL_TYPE_ATTR) == 'od'
 
-        self.log(f"[SQA Engine] Evaluating channel coupling efficiency (Threshold: {cv_threshold}%)...")
-        for col in signal_cols:
-            if col not in data.columns:
-                continue
-            cv = calculate_coefficient_of_variation(data[col])
+        self.log(f"[SQA Engine] Evaluating channel coupling efficiency (Threshold: {cv_threshold}%)"
+                 f"{' on the intensity equivalent exp(-OD)' if is_od else ''}...")
+        if not signal_cols:
+            return data
+        # All channels at once (vectorized), and dropped once at the end.
+        cvs = calculate_coefficient_of_variation(np.exp(-data[signal_cols]) if is_od else data[signal_cols])
+        cols_to_drop = []
+        for col, cv in cvs.items():
             if abs(cv) > cv_threshold:
                 self.log(f" -> [REJECTED] Channel '{col}' exceeded noise limits. CV = {cv:.2f}%")
                 self.rejected_channels.append({'channel': col, 'reason': 'sqa', 'metric': round(float(cv), 4)})
-                data = data.drop(columns=[col])
+                cols_to_drop.append(col)
             else:
                 self.log(f" -> [PASSED] Channel '{col}' verified clean. CV = {cv:.2f}%")
+        if cols_to_drop:
+            data = data.drop(columns=cols_to_drop)
         return data
 
     def _step_mbll(self, data, params, excluded_cols):
@@ -232,8 +303,12 @@ class SignalPreprocessor:
         params:
           'mbll_wavelengths' (default [735, 850]): the two wavelengths to pair.
           'extinction_coefficients' (default {}): {str(wavelength): [e_HbO, e_HbR]}.
-        Optical density is -log(I / mean(I)) over the given buffer; no DPF or
-        source-detector distance is applied. If at least one pair converts,
+        Input may be raw intensity, converted here to optical density as
+        -log(I / mean(I)) over the given buffer, or optical density from an
+        earlier 'optical_density' step, used as is. No DPF or source-detector
+        distance is applied. Raw-intensity input containing non-positive values
+        triggers a warning, since it is probably OD data whose marker was lost
+        (e.g. a checkpoint CSV saved after the OD step). If at least one pair converts,
         the result holds only the excluded (non-signal) columns plus the new
         HbO/HbR columns - unpaired channels are dropped. If the coefficients
         are missing or no pair is found, data is returned unchanged.
@@ -242,9 +317,14 @@ class SignalPreprocessor:
         ext_coeffs = params.get('extinction_coefficients', {})
         signal_cols = [c for c in data.columns if c not in excluded_cols]
 
-        self.log("[MBLL Engine] Converting Raw Intensity to Concentration Matrix...")
-        base_channels = set([c.rsplit('_', 1)[0] for c in signal_cols if '_' in c])
+        is_od = data.attrs.get(SIGNAL_TYPE_ATTR) == 'od'
+        self.log(f"[MBLL Engine] Converting {'Optical Density' if is_od else 'Raw Intensity'} to Concentration Matrix...")
+        # Channel order follows the input (not a set), so the HbO/HbR column order -
+        # and thus a decoder's feature order - is the same in every run.
+        base_channels = dict.fromkeys(c.rsplit('_', 1)[0] for c in signal_cols if '_' in c)
         mbll_df = data[[c for c in excluded_cols if c in data.columns]].copy()
+        hb_columns = {}
+        non_positive = 0
 
         if len(wavelengths) >= 2 and str(wavelengths[0]) in ext_coeffs and str(wavelengths[1]) in ext_coeffs:
             E_inv = np.linalg.inv(np.array([ext_coeffs[str(wavelengths[0])], ext_coeffs[str(wavelengths[1])]]))
@@ -252,13 +332,27 @@ class SignalPreprocessor:
             for base in base_channels:
                 ch_w1, ch_w2 = f"{base}_{wavelengths[0]}", f"{base}_{wavelengths[1]}"
                 if ch_w1 in data.columns and ch_w2 in data.columns:
-                    od_w1 = -np.log(data[ch_w1] / data[ch_w1].mean())
-                    od_w2 = -np.log(data[ch_w2] / data[ch_w2].mean())
+                    if is_od:
+                        od_w1, od_w2 = data[ch_w1], data[ch_w2]
+                    else:
+                        non_positive += int((data[ch_w1] <= 0).any()) + int((data[ch_w2] <= 0).any())
+                        od_w1 = -np.log(data[ch_w1] / data[ch_w1].mean())
+                        od_w2 = -np.log(data[ch_w2] / data[ch_w2].mean())
                     conc = apply_mbll_inversion(od_w1, od_w2, E_inv)
-                    mbll_df[f"{base}_HbO"] = conc[0, :]
-                    mbll_df[f"{base}_HbR"] = conc[1, :]
+                    hb_columns[f"{base}_HbO"] = conc[0, :]
+                    hb_columns[f"{base}_HbR"] = conc[1, :]
                     converted = True
+            if non_positive:
+                self.warn(f"MBLL input treated as raw intensity contains non-positive values in {non_positive} "
+                          f"channel(s) - it may already be optical density (e.g. a checkpoint saved after the "
+                          f"OD step). Their HbO/HbR values will contain NaN; enable 'optical_density' in this "
+                          f"pipeline instead of reloading OD data.")
             if converted:
+                # One concat instead of a column insert per channel (avoids a fragmented frame).
+                attrs = dict(mbll_df.attrs)
+                mbll_df = pd.concat([mbll_df, pd.DataFrame(hb_columns, index=data.index)], axis=1)
+                mbll_df.attrs.update(attrs)
+                mbll_df.attrs[SIGNAL_TYPE_ATTR] = 'hb'
                 data = mbll_df
         return data
 
@@ -305,11 +399,9 @@ class SignalPreprocessor:
 
             try:
                 self.log(f"[Pipeline Engine] Applying Butterworth Filter ({low_cut}-{high_cut} Hz)...")
-                data_filtered = data.copy()
-                data_filtered[signal_cols] = data_filtered[signal_cols].apply(
-                    butter_bandpass_filter, args=(low_cut, high_cut, fs, b_order)
-                )
-                data = data_filtered
+                # One filter design applied to all channels at once (axis 0), not per column.
+                filtered = butter_bandpass_filter(data[signal_cols].values, low_cut, high_cut, fs, b_order)
+                data = _with_columns(data, signal_cols, filtered)
             except Exception as e:
                 self.warn(f"Butterworth filter pass SKIPPED: {e}. Data passed through UNFILTERED.")
         return data
@@ -321,7 +413,7 @@ class SignalPreprocessor:
         params:
           'detrend_batches' (default 10): number of batches, capped at the
               number of rows.
-        Modifies data in place and returns it. Skipped (with a log message)
+        Returns a detrended copy. Skipped (with a log message)
         if nilearn is not installed or detrending fails.
         """
         d_batches = params.get('detrend_batches', 10)
@@ -339,8 +431,7 @@ class SignalPreprocessor:
                 n_batches = min(d_batches, max(1, len(data)))
                 self.log(f"[Pipeline Engine] Executing linear batch detrending passes...")
                 detrended_signals = _detrend(data[signal_cols], inplace=False, type='linear', n_batches=n_batches)
-                for i, col in enumerate(signal_cols):
-                    data[col] = detrended_signals[:, i]
+                data = _with_columns(data, signal_cols, detrended_signals)
             except Exception as e:
                 self.log(f"[WARNING] Detrend pass skipped: {e}")
         return data
@@ -352,7 +443,7 @@ class SignalPreprocessor:
         params:
           'scaler_type' (default 'standard'): 'minmax' for MinMaxScaler,
               anything else for StandardScaler (z-score).
-        Modifies data in place and returns it.
+        Returns a scaled copy.
         """
         signal_cols = [c for c in data.columns if c not in excluded_cols]
         if signal_cols:
@@ -365,7 +456,7 @@ class SignalPreprocessor:
                 from sklearn.preprocessing import StandardScaler
                 scaler = StandardScaler()
 
-            data[signal_cols] = scaler.fit_transform(data[signal_cols])
+            data = _with_columns(data, signal_cols, scaler.fit_transform(data[signal_cols]))
         return data
 
     def _step_reduce_to_feature_vector(self,data,params,exculed_cols):

@@ -39,13 +39,17 @@ def calculate_scalp_coupling_index(w1_series, w2_series):
 
 def calculate_coefficient_of_variation(series):
     """
-    Coefficient of Variation (std / mean, in %) of one channel, used by SQA to
-    flag noisy channels. Returns inf if the mean is zero.
+    Coefficient of Variation (std / mean, in %), used by SQA to flag noisy
+    channels. Accepts one channel (Series -> float) or a DataFrame of channels
+    (-> Series of per-column CVs, computed at once). A zero mean gives inf.
     """
     mean_val = series.mean()
-    if mean_val != 0:
-        return (series.std() / mean_val) * 100.0
-    return float('inf')
+    if np.ndim(mean_val) == 0:
+        if mean_val != 0:
+            return (series.std() / mean_val) * 100.0
+        return float('inf')
+    cv = (series.std() / mean_val) * 100.0
+    return cv.where(mean_val != 0, float('inf'))
 
 
 def apply_mbll_inversion(od_w1, od_w2, e_inv):
@@ -59,3 +63,28 @@ def apply_mbll_inversion(od_w1, od_w2, e_inv):
     relative (concentration x pathlength), not absolute concentrations.
     """
     return e_inv @ np.vstack([od_w1, od_w2])
+
+
+def optical_density(intensity):
+    """
+    Converts raw light intensity to optical density.
+
+    Per channel (column): OD = -ln(I / mean(I)). If any intensity is <= 0
+    (hardware/motion artifacts), all values are first replaced by their
+    absolute value and then clipped from below at the smallest non-zero
+    per-channel minimum, so the log is always defined.
+
+    Args:
+        intensity: (n_samples, n_channels) array of raw intensities.
+    Returns:
+        (od, n_non_positive): the OD array and how many samples were <= 0.
+    """
+    data = np.array(intensity, dtype=float)
+    n_non_positive = int(np.sum(data <= 0))
+    if n_non_positive:
+        data = np.abs(data)
+        min_ = np.inf
+        for channel_min in data.min(axis=0):
+            min_ = min(min_, channel_min or min_)
+        data = np.maximum(data, min_)
+    return -np.log(data / data.mean(axis=0)), n_non_positive
