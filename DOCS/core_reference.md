@@ -181,7 +181,7 @@ and is deliberately not matched.
 
 ## `lsl_client.py`
 
-Two `QThread` workers (the only PyQt dependency in `core/`):
+Three `QThread` workers (the only PyQt dependency in `core/`):
 
 - `AdvancedStreamResolver(sig_type, use_markers, marker_name)` — resolves a
   primary data stream by `type` and, optionally, a marker stream by `name`,
@@ -190,6 +190,18 @@ Two `QThread` workers (the only PyQt dependency in `core/`):
 - `MarkerDiagnosticWorker(marker_name)` — probes for a named marker stream
   and reports its metadata (`name`, `type`, `hostname`, `uid`,
   `channels`) or a timeout failure.
+- `StreamAcquisitionWorker(inlet, marker_inlet, session)` — records a live
+  stream on a background thread: pulls data in chunks and passes each sample
+  to `session.process_and_append` (which polls the marker inlet once per
+  sample, as before). Emits `error(msg)` and exits if the inlet fails. It
+  owns both inlets while running, so `stop()` it (it waits for the thread)
+  before closing them.
+
+`release_inlets_async(inlets)` closes and releases LSL inlets on a
+background thread, because liblsl blocks for about 0.5 s per inlet while
+tearing it down. It takes ownership: pass a list holding the only remaining
+references (it is emptied), so the last reference, and the teardown, always
+belong to the background thread.
 
 ---
 
@@ -217,7 +229,8 @@ Two `QThread`s for development without real hardware, both launched from
   metadata attached.
 - `SyntheticMarkerThread(name='OpenSesame_Markers')` — streams a repeating
   fake trial cycle (`run_onset` → `trial_onset`/`trial_index`/`target` →
-  `trial_offset`, looped every 3s).
+  `trial_offset`, about 8 s per cycle). Its waits are interruptible, so
+  `stop()` returns immediately.
 
 ---
 
@@ -225,6 +238,9 @@ Two `QThread`s for development without real hardware, both launched from
 
 `DataSession` — the real-time sample/marker buffer, owned as a single
 shared instance by `main_window.py` (`self.global_session_cache`).
+**Thread-safe:** the acquisition thread appends while the GUI reads, so
+every access takes one internal lock. Read through `snapshot()` / `len()`
+rather than the raw lists, which could be caught mid-append.
 
 - `process_and_append(sample, timestamp, marker_inlet)` — appends a data
   sample, and non-blockingly pulls one marker sample per call, sorting it
@@ -237,3 +253,11 @@ shared instance by `main_window.py` (`self.global_session_cache`).
   `core.io_utils.write_csv`), matching exactly what `offline_processor.py`
   expects to read back in.
 - `reset()` — clears all buffers for a fresh recording session.
+- `snapshot(n_recent)` — a consistent copy for display:
+  `(last n_recent samples, their timestamps, all cached markers, total sample count)`.
+- `len(session)` — number of samples recorded.
+- `unsaved_count()` — samples recorded since the last successful export
+  (`saved_count` is set by `export_to_csv` and cleared by `reset()`); the
+  Online tab uses it to confirm before Start discards a recording.
+- `export_to_csv` builds its DataFrame under the lock, so exporting while
+  recording writes a consistent cut of everything recorded so far.

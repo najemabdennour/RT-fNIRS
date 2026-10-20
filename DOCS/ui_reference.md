@@ -70,10 +70,41 @@ Live acquisition dashboard. Lets you pick a target signal type
 (NIRS/EEG/MEG), optionally enable a marker stream, and resolve both via
 `core.lsl_client.AdvancedStreamResolver`. A "Use Synthetic Data" mode spins
 up `core.simulators.SyntheticNIRSThread`/`SyntheticMarkerThread` instead of
-requiring real hardware. Once connected, a `QTimer` polls the inlet every
-30ms, appends into `parent_win.global_session_cache` (the single shared
-`DataSession`), and plots up to 15 selected channels with vertical marker
-lines. Exports the accumulated session to CSV on demand.
+requiring real hardware. Once connected, it plots up to 15 selected channels
+with vertical marker lines and exports the accumulated session to CSV on
+demand.
+
+**Recording and display are decoupled** so a busy GUI never slows the
+recording and recording never stalls the GUI:
+
+- **Recording** runs on a `core.lsl_client.StreamAcquisitionWorker` thread,
+  which pulls LSL chunks into `parent_win.global_session_cache` (the single
+  shared, thread-safe `DataSession`). It keeps recording even if the GUI
+  thread is blocked (verified: no samples lost during a 3 s GUI freeze), and
+  CSV export works while recording continues.
+- **Display** runs on a ~10 Hz `QTimer` that reads a consistent
+  `DataSession.snapshot()` of the last 100 samples. Axes, legends and
+  layout are built once per channel selection / layout / theme change
+  (`_rebuild_plot_axes`); each update only moves the data and marker lines
+  and **blits** them over a cached background (`_update_plot_data`). A full
+  re-render happens only when an axis range must change: the y-range is
+  kept with hysteresis (25% margin, reset only when the data leaves it or
+  uses under 25% of it), and the x-range is sized for the full display
+  window from the start.
+
+On a replayed LUMO session (3,096 channels, 15 plots) an update costs about
+50 ms instead of about 490 ms for the previous full-figure rebuild.
+
+**Start** begins a fresh recording: it clears the shared `DataSession`
+(and the frame counter / last-marker label). If the buffer holds samples
+recorded since the last export, a **Discard Unsaved Recording?** dialog
+first offers *Export...* (save, then start — only if the export succeeds),
+*Discard* (start without saving) or *Cancel* (keep everything, including a
+running stream). A failed export is reported and the start is aborted. **Stop** returns in a few milliseconds: liblsl needs about
+0.5 s to tear down each inlet, so the inlets are handed to
+`core.lsl_client.release_inlets_async` and released on a background thread,
+and the Dev Mode simulators stop immediately (their waits are
+interruptible).
 
 ---
 
