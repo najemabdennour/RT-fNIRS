@@ -81,6 +81,15 @@ DEFAULT_RAW_BEHAVIORAL = os.path.join(BASE_DIR, "data", "raw", "behavs")
 DEFAULT_OUT_SESSIONS   = os.path.join(BASE_DIR, "data", "preprocessed", "grouped_sessions")
 DEFAULT_OUT_BEHAVIORAL = os.path.join(BASE_DIR, "data", "preprocessed", "grouped_behavs")
 
+# Channel layout table (saved from the Online tab's 2D Layout) that the Dev Mode
+# NIRS simulator streams, so the layout can be tested without hardware.
+# Set to None, or point at a missing file, to fall back to 200 generic channels.
+SIMULATOR_LAYOUT_FILE = os.path.join(BASE_DIR, "data", "channel_layout_2026-11-02_152351.csv")
+
+# Helmet templates (every tile slot of a helmet, learned from LSL stream
+# metadata) used by the 2D Layout to draw empty slots; one JSON file per cap id.
+HELMET_TEMPLATE_DIR = os.path.join(BASE_DIR, "data", "helmet_templates")
+
 
 # Non-signal (structural / marker / label) columns.
 # Single source of truth for which DataFrame columns are NOT signal channels,

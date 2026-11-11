@@ -4,6 +4,7 @@ Online streaming monitor tab: connects to live LSL data/marker streams,
 plots selected channels in real time and exports the recorded session.
 """
 import datetime
+import os
 import time
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -11,7 +12,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QGroupBox, QLineEdit, QFileDialog, 
                              QMessageBox, QListWidget, QAbstractItemView, 
-                             QComboBox, QSplitter, QCheckBox, QGridLayout)
+                             QComboBox, QSplitter, QCheckBox, QGridLayout, QTabWidget)
 from PyQt5.QtCore import QTimer, Qt
 from pylsl import StreamInlet
 
@@ -19,6 +20,11 @@ from ui.themes import THEMES
 from core.simulators import SyntheticNIRSThread, SyntheticMarkerThread
 from core.lsl_client import AdvancedStreamResolver, MarkerDiagnosticWorker, StreamAcquisitionWorker, release_inlets_async
 from core.lsl_utils import resolve_channel_names
+import config
+from core.io_utils import read_csv
+from core.montage import parse_montage, montage_from_table
+from ui.montage_view import MontageView
+from ui.montage_view_3d import MontageView3D
 
 
 class OnlineStreamingTab(QWidget):
@@ -166,7 +172,15 @@ class OnlineStreamingTab(QWidget):
         self.canvas = FigureCanvas(self.figure)
         self.canvas.mpl_connect('draw_event', self._on_canvas_draw)
         canvas_layout.addWidget(self.canvas)
-        splitter.addWidget(canvas_container)
+
+        # Right panel sub-tabs: live plots, and the 2D / 3D channel and tile layouts from the stream metadata.
+        self.montage_view = MontageView(lambda: THEMES[self.parent_win.combo_theme.currentText()])
+        self.view_tabs = QTabWidget()
+        self.view_tabs.addTab(canvas_container, "Live Plots")
+        self.view_tabs.addTab(self.montage_view, "2D Layout")
+        self.montage_view_3d = MontageView3D(lambda: THEMES[self.parent_win.combo_theme.currentText()], self.montage_view)
+        self.view_tabs.addTab(self.montage_view_3d, "3D Layout")
+        splitter.addWidget(self.view_tabs)
         
         splitter.setSizes([280, 970])
 
@@ -192,11 +206,18 @@ class OnlineStreamingTab(QWidget):
         self.lbl_pool_count.setText("Cache: 0 frames collected")
         self.lbl_last_marker.setText("Last Marker: [None]")
         self.channel_list_widget.clear()
+        self.montage_view.reset("Resolving the stream - its layout appears once connected.")
         
         if self.chk_simulate.isChecked():
+            sim_montage = self._load_simulator_montage()
+            name = 'LUMO_Synthetic' if self.combo_sig_type.currentText() == "NIRS" else 'Synthetic_Signal'
+            if sim_montage is not None and sim_montage.system.get('stream_name'):
+                # Same system name as the recorded stream (so the same helmet template applies).
+                name = f"{sim_montage.system['stream_name']} (simulated)"
             self.sim_nirs = SyntheticNIRSThread(
-                name='LUMO_Synthetic' if self.combo_sig_type.currentText() == "NIRS" else 'Synthetic_Signal',
-                n_channels=200 # Large enough to stress-test, small enough to keep UI lists responsive
+                name=name,
+                n_channels=200,  # Used only without a layout file
+                montage=sim_montage,
             )
             self.sim_markers = SyntheticMarkerThread(self.ent_marker_name.text())
             
@@ -216,6 +237,23 @@ class OnlineStreamingTab(QWidget):
         self.resolver_worker.failure.connect(self._on_resolution_failure)
         self.resolver_worker.start()
 
+    def _load_simulator_montage(self):
+        """
+        Reads config.SIMULATOR_LAYOUT_FILE (a saved layout table) for the Dev
+        Mode simulator. Returns a Montage, or None (generic channels) if the
+        setting is empty, the file is missing, or it can't be read.
+        """
+        path = getattr(config, 'SIMULATOR_LAYOUT_FILE', None)
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            return montage_from_table(read_csv(path))
+        except Exception as e:
+            QMessageBox.warning(self, "Simulator Layout Not Loaded",
+                                f"Could not read the simulator layout file:\n{path}\n\n{e}\n\n"
+                                f"The simulator will stream generic channels instead.")
+            return None
+
     def _on_resolution_success(self, primary_info, marker_info, status_text):
         """
         Opens inlets for the resolved streams, populates the channel list
@@ -231,6 +269,10 @@ class OnlineStreamingTab(QWidget):
                 self.marker_inlet = StreamInlet(marker_info)
             
             self.channel_names = resolve_channel_names(self.stream_info)
+            try:
+                self.montage_view.set_montage(parse_montage(self.stream_info.as_xml(), self.channel_names))
+            except Exception as e:
+                self.montage_view.reset(f"Could not read the channel layout from the stream metadata:\n{e}")
             
             self.channel_list_widget.blockSignals(True)
             for idx, label in enumerate(self.channel_names):
@@ -311,6 +353,7 @@ class OnlineStreamingTab(QWidget):
         self.selected_indices = [item.data(Qt.UserRole) for item in chosen]
         self.lbl_selected_count.setText(f"Active Plots: {len(self.selected_indices)} / 15")
         self.refresh_canvas_plots()
+        self.montage_view.set_highlighted_channels(self.selected_indices)
 
     def run_marker_diagnostics(self):
         """Pings the named marker stream on a background MarkerDiagnosticWorker thread."""

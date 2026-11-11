@@ -7,41 +7,41 @@ from random import random as rand
 from PyQt5.QtCore import QThread
 from pylsl import StreamInfo, StreamOutlet, local_clock
 
+from core.montage import write_lsl_desc
+
 
 class SyntheticNIRSThread(QThread):
     """Publishes a synthetic 'NIRS' LSL stream of sine-plus-noise channels at a fixed rate."""
-    def __init__(self, name='LUMO_Synthetic', n_channels=100, fs=6.6667):
+    def __init__(self, name='LUMO_Synthetic', n_channels=100, fs=6.6667, montage=None):
         """
         Args:
             name: LSL stream name.
             n_channels: number of channels (kept low by default for plotting speed).
             fs: nominal sampling rate (Hz).
+            montage: optional core.montage.Montage. When given, the stream has
+                one channel per montage channel and publishes the montage in
+                its metadata (channels, optodes with positions, tiles), like
+                real LUMO hardware; n_channels is then ignored.
         """
         super().__init__()
         self.stream_name = name
-        self.n_channels = n_channels
+        self.montage = montage
+        self.n_channels = len(montage.channels) if montage is not None else n_channels
         self.fs = fs
         self.is_running = True
 
     def run(self):
         """
-        Create the outlet with 'S(x)_D(y)_<wavelength>' channel labels, then push
+        Create the outlet (with the montage's metadata, or generic
+        'S(x)_D(y)_<wavelength>' channel labels), then push
         samples until stop() is called, catching up on however many samples
         are due since start so the average rate matches fs.
         """
         info = StreamInfo(self.stream_name, 'NIRS', self.n_channels, self.fs, 'float32', 'synth_nirs_01')
-        chns = info.desc().append_child("channels")
-
-        # Labels must use a single '_' between optode pair and wavelength:
-        # core.signal_pipeline pairs wavelengths by stripping the trailing
-        # '_<wavelength>', and core.lsl_utils.resolve_channel_names expects it.
-        # Even channels are 735 nm, odd channels 850 nm.
-        for i in range(self.n_channels):
-            ch = chns.append_child("channel")
-            source = (i // 10) + 1
-            detector = (i % 10) + 1
-            wl = 735 if i % 2 == 0 else 850
-            ch.append_child_value("label", f"S({source})_D({detector})_{wl}")
+        if self.montage is not None:
+            write_lsl_desc(self.montage, info.desc())
+        else:
+            self._write_generic_labels(info.desc())
 
         outlet = StreamOutlet(info)
         start_time = local_clock()
@@ -58,6 +58,21 @@ class SyntheticNIRSThread(QThread):
 
             sent_samples += required_samples
             time.sleep(0.01) # Avoid busy-waiting at 100% CPU
+
+    def _write_generic_labels(self, desc):
+        """Adds 'S(x)_D(y)_<wavelength>' channel labels (no positions) to the stream description."""
+        chns = desc.append_child("channels")
+
+        # Labels must use a single '_' between optode pair and wavelength:
+        # core.signal_pipeline pairs wavelengths by stripping the trailing
+        # '_<wavelength>', and core.lsl_utils.resolve_channel_names expects it.
+        # Even channels are 735 nm, odd channels 850 nm.
+        for i in range(self.n_channels):
+            ch = chns.append_child("channel")
+            source = (i // 10) + 1
+            detector = (i % 10) + 1
+            wl = 735 if i % 2 == 0 else 850
+            ch.append_child_value("label", f"S({source})_D({detector})_{wl}")
 
     def stop(self):
         """Signal the push loop to exit and block until the thread finishes."""

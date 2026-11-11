@@ -72,11 +72,13 @@ class LSLVisualizerApp(QMainWindow):
             self.btn_fullscreen.setText("Exit Fullscreen")
 
     def apply_theme_config(self, theme_name):
-        """Applies the named theme's stylesheet and redraws the online plot with its background color."""
+        """Applies the named theme's stylesheet and redraws the online plots and 2D/3D layouts in its colors."""
         theme = THEMES[theme_name]
         self.setStyleSheet(theme["qss"])
         self.tab_online.figure.patch.set_facecolor(theme["bg"])
         self.tab_online.refresh_canvas_plots()
+        self.tab_online.montage_view.redraw()
+        self.tab_online.montage_view_3d.redraw()
 
     @property
     def combo_layout(self):
