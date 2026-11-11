@@ -179,6 +179,56 @@ and is deliberately not matched.
 
 ---
 
+## `montage.py`
+
+Reads the optode montage from an LSL stream's metadata (no Qt). Built for
+the layout LUMO publishes in its stream `desc`:
+
+| Element | Contents |
+|---|---|
+| `channels/channel` | `label`, `source` (e.g. `N1/A`), `detector` (`N1/1`), `wavelen` (nm), `length` (source-detector distance, mm) |
+| `probes/probe` + `location` | optode `label`, `module` (tile), `function` (`Source`/`Detector`) and X/Y/Z position (mm); LUMO writes `location` as the probe's next sibling |
+| `modules/module` | tile `label` (e.g. `N1`) and hardware `serial` |
+| `fiducial/fiducial` | `Nasion`, `Inion`, `Al`, `Ar`, `Cz` positions |
+
+Every part is optional. On a recorded LUMO header (48 tiles, 144 sources,
+192 detectors, 7,056 channels) each channel's `length` equals the 3D
+distance between its optodes' positions.
+
+| Function | Purpose |
+|---|---|
+| `parse_montage(stream_xml, channel_names=None)` | Parses `StreamInfo.as_xml()` (from a connected inlet's `info()`) into a `Montage` (`channels`, `probes`, `modules`, `fiducials`, `system`; `has_positions`, `summary()`, `system_summary()`, `tiles()`). `system` holds the stream name and, for LUMO, `device`/`hub_serial`/`cap_id` (from a name like `LUMO HA00053/GA00396`, see `parse_system_name`), plus `acq_software`, `acq_version` and `sampling_rate` from `<lumo>`. `channel_names` sets each channel's display name. |
+| `project_2d(montage, extra_points=None)` | 2D layout, returning `(positions, method)`. `extra_points` (e.g. empty helmet slots) are projected in the same frame; for a saved layout, the azimuthal projection that produced it is recovered by least squares from the shared optodes, so extras land exactly where a fresh projection would put them. `'azimuthal'`: with Nasion/Inion/Al/Ar, azimuthal equidistant projection about the vertex (Cz), nose up (+y), right ear right (+x), radius = angle from the vertex × head radius (mm). `'saved'`: else the montage's saved 2D layout (`layout_2d`). `'sphere'`: else a sphere is fitted to the optodes and they are projected about the montage's own centre (orientation arbitrary). |
+| `head_outline(montage, positions, method, extra_points=None)` | `(centre_xy, radius, approximate)`: exact through the projected fiducials for `'azimuthal'` layouts; otherwise centred on the layout origin with radius = ¼ circumference of a sphere fitted to the 3D optodes (`approximate=True`). |
+| `montage_from_table(table, channel_names=None)` | Rebuilds a `Montage` from a saved layout table, including its 2D layout (`layout_*` columns) as `layout_2d`, and `system` / `fiducials` from the `system_*` / `fiducial_*` columns when present. With `channel_names`, follows the stream's channel order (unmatched names get no optodes). |
+| `write_lsl_desc(montage, desc)` | Writes a montage into an LSL `StreamInfo.desc()` in LUMO's layout, plus a `<layout>` X/Y child per probe for the saved 2D position, so `parse_montage` recovers it. Also writes `<lumo>` (acquisition software) and the fiducials when known. Used by the Dev Mode simulator. |
+| `montage_table(montage, positions_2d=None, tile_slots=None)` | One row per channel: `channel`, `wavelength_nm`, `source`, `detector`, `source_tile`, `detector_tile`, their serials, `same_tile`, `distance_mm` (the stream's `length`, else computed from positions), source/detector/midpoint X/Y/Z (mm) and their 2D layout coordinates; `source_slot`/`detector_slot` with `tile_slots`; then constant `system_*` columns and `fiducial_<name>_x/y/z`, so the table can recreate the stream's metadata. |
+
+Note: the 2D projection is for display. Distances in the flattened layout
+differ from true distances (on average about 0.84× near the optodes); the
+table's `distance_mm` and 3D coordinates are the true values.
+
+---
+
+## `helmet_templates.py`
+
+Helmet templates: every tile slot of a helmet, learned from LSL stream
+metadata (a stream only lists the tiles plugged in), so the 2D layout can
+draw the empty slots. Stored as `<key>.json` per helmet; the key is the cap
+id (`template_key(montage)`, else the stream name). A template holds
+`slots` (`id`, `optodes` {short id: 3D position}, `tiles_seen`,
+`serials_seen`), `fiducials`, `system`, `reference`, `sources` and dates.
+
+| Function | Purpose |
+|---|---|
+| `from_montage(key, montage, source="")` | Option A: a reference template made only from this montage (record once with every slot populated). |
+| `merge_montage(template, montage, source="")` | Option B: adds the montage's tiles - matched slots fill in missing optodes, other tiles become new slots. Returns the number of new slots. |
+| `match_tiles(template, montage)` | `{tile: slot id}` by optode position (median distance ≤ `MATCH_TOLERANCE_MM` = 5 mm, closest first, one tile per slot), independent of tile names. |
+| `empty_slot_points(template, matched)` | `{'slot<id>/<optode>': position}` of the unoccupied slots, for `project_2d(..., extra_points=...)`. |
+| `load_template` / `save_template` / `list_templates` / `new_template` | Storage in a folder (`config.HELMET_TEMPLATE_DIR`). |
+
+---
+
 ## `lsl_client.py`
 
 Three `QThread` workers (the only PyQt dependency in `core/`):
@@ -224,9 +274,11 @@ not on the lightweight record `resolve_byprop()` itself returns —
 Two `QThread`s for development without real hardware, both launched from
 `online_tab.py`'s synthetic-data checkbox:
 
-- `SyntheticNIRSThread(name='LUMO_Synthetic', n_channels=100, fs=6.6667)` —
-  streams sine+noise samples, with `S(x)_D(y)_<735|850>` channel-label
-  metadata attached.
+- `SyntheticNIRSThread(name='LUMO_Synthetic', n_channels=100, fs=6.6667, montage=None)` —
+  streams sine+noise samples. With a `montage` (the Online tab passes the
+  one in `config.SIMULATOR_LAYOUT_FILE`) it has one channel per montage
+  channel and publishes the full montage metadata like LUMO hardware;
+  otherwise `n_channels` channels with generic `S(x)_D(y)_<735|850>` labels.
 - `SyntheticMarkerThread(name='OpenSesame_Markers')` — streams a repeating
   fake trial cycle (`run_onset` → `trial_onset`/`trial_index`/`target` →
   `trial_offset`, about 8 s per cycle). Its waits are interruptible, so

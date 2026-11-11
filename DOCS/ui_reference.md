@@ -74,6 +74,91 @@ requiring real hardware. Once connected, it plots up to 15 selected channels
 with vertical marker lines and exports the accumulated session to CSV on
 demand.
 
+The right-hand panel has three sub-tabs: **Live Plots**, **2D Layout** and **3D Layout**.
+
+**2D Layout** (`ui/montage_view.py`, `MontageView`) draws the montage
+described by the stream's own metadata (`core.montage`): every tile shaded
+in its own color and named, sources (red circles) and detectors (blue
+squares), and a line for each source-detector pair up to a chosen **max
+channel length** (default 30 mm). The channels selected for the live plots
+are highlighted in their plot colors, with ringed optodes.
+
+- **System line:** device, hub serial, cap id, acquisition software and
+  rate from the stream (e.g. `LUMO · hub HA00053 · cap GA00396 · lumox
+  2.2.3 · 6.67 Hz`).
+- **Head outline:** from the stream's head landmarks (Nasion, Inion, ears,
+  Cz) when present; otherwise an estimated outline (dashed, labelled
+  *approximate*) around the optodes.
+- **Empty helmet slots:** with a helmet template (below), slots with no
+  tile in this session are drawn as dashed outlines labelled `#<slot>`.
+- The view **frames all tiles and slots** (the whole head once they cover
+  most of it); *Full head* always shows the whole head.
+- **Hover** over an optode, a channel line or an empty slot for details
+  (name, role, tile and serial, helmet slot, distance, channel names per
+  wavelength, tiles previously seen in a slot).
+- Marker and label sizes follow the optode spacing and the canvas size
+  (re-computed after a resize), so dense montages stay readable. The
+  toolbar above the canvas zooms, pans and saves a picture.
+- *Tile names* / *Optode names* toggle the labels; optode names are the
+  short ids (`A`, `1`...) since the tile name gives the rest.
+- **Load Layout File...** applies a saved layout table to the current
+  stream's channels (matched by name) - for streams whose metadata has no
+  optode positions. **Save Layout Table (CSV)...** writes one row per channel
+  (see `core.montage.montage_table`).
+- In **Dev Mode**, the simulator streams the montage in
+  `config.SIMULATOR_LAYOUT_FILE`, so the layout appears without hardware.
+  If that table has system columns, the simulated stream reuses the
+  recorded system name, so the same helmet template applies.
+
+**Helmet templates** (`core.helmet_templates`) supply the empty slots,
+which a stream's metadata never lists. They are built only from LSL stream
+metadata and stored per helmet in `config.HELMET_TEMPLATE_DIR`, named after
+the stream's cap id:
+
+- **Save as Helmet Template...** (option A): with every slot of the helmet
+  populated, records the complete helmet once. Replaces the existing
+  template, after a confirmation that says how many of its slots would be
+  removed.
+- **Learn slots from each stream** (option B, on by default): every stream
+  connected (or layout file loaded) adds its tiles' positions to the
+  template, so it fills up as different slots are used across sessions.
+- **Helmet template** selector: *Auto* uses the template of the stream's
+  cap id; any saved template can be chosen instead, or *None*.
+
+Tiles are matched to slots by optode position (median distance ≤ 5 mm),
+not by tile name, because LUMO's `N` numbering follows how the tiles are
+connected and can change between sessions. Tiles that match no slot are
+reported in the summary line.
+
+The layout is drawn once per stream / option change - never per sample -
+and only while its tab is visible.
+
+**3D Layout** (`ui/montage_view_3d.py`, `MontageView3D`) shows the same
+montage as the 2D Layout (it follows it via `MontageView.add_listener`:
+same stream, helmet template, empty slots and live-plot highlights) at the
+optodes' true 3D positions: tiles as shaded patches, empty helmet slots as
+dashed outlines, sources, detectors, channel lines up to its own *max
+channel length*, the head landmarks, a translucent *head surface* and a
+*face* (nose, eyes, mouth, ears, with *Front* / *Left* / *Right* labels)
+so the tiles' orientation is obvious. Head and face are placed from the
+stream's landmarks (sphere through Nasion/Inion/ears, ears at Al/Ar, nose
+below the Nasion); without landmarks a sphere is fitted to the optodes and
+LUMO's axes are assumed (+x right ear, +y nose, +z up), which the plot
+states. Drag to rotate, scroll to zoom, use the *Top / Front / Back / Left /
+Right* buttons for standard views, hover an optode or empty slot for
+details. Above the plot it shows the same system line
+(device · hub · cap · software · rate) and helmet line (tile/optode/channel
+counts, layout file, helmet template and slots used) as the 2D Layout. It
+also has the same **Helmet template** selector, **Learn slots from each
+stream**, **Save as Helmet Template...**, **Load Layout File...** and
+**Save Layout Table (CSV)...** controls; they act on the 2D Layout's shared
+state, so changing the template or loading a layout in either tab updates
+both. Matplotlib's 3D draws everything see-through, so after each
+rotation the tiles, slots, channels and face parts on the far side of the
+head are faded to 12% and only the side facing you is solid. The rotation
+is kept when the view is redrawn, and it is drawn only on changes while
+visible.
+
 **Recording and display are decoupled** so a busy GUI never slows the
 recording and recording never stalls the GUI:
 

@@ -55,6 +55,15 @@ Computed relative to `config.py`'s own directory (`BASE_DIR`):
 | `DEFAULT_OUT_SESSIONS` | `data/preprocessed/grouped_sessions` |
 | `DEFAULT_OUT_BEHAVIORAL` | `data/preprocessed/grouped_behavs` |
 
+`SIMULATOR_LAYOUT_FILE` — a saved layout table (from the Online tab's
+2D Layout) that the Dev Mode NIRS simulator streams, so the 2D layout can be
+used without hardware. Default `data/channel_layout_2026-11-02_152351.csv`;
+set it to `None` (or a missing file) for 200 generic channels.
+
+`HELMET_TEMPLATE_DIR` — where helmet templates (all tile slots of a
+helmet, learned from LSL stream metadata) are stored, one JSON file per
+cap id. Default `data/helmet_templates`.
+
 ## `NON_SIGNAL_COLUMNS`
 
 The single shared list of structural / marker / label columns that are never
