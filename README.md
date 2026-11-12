@@ -64,12 +64,14 @@ core/                      Backend logic - no PyQt imports except QThread worker
   io_utils.py                    CSV read/write that strips leaked index columns
   montage.py                     Optode/tile layout from LSL stream metadata, 2D projection, layout table
   helmet_templates.py            All tile slots of a helmet, learned from LSL streams (empty-slot drawing)
+  config_io.py                   Reads/edits config.py in place for the Settings tab
 
 ui/                         PyQt5 tabs and shared widgets
   main_window.py              Top-level window, tab registry, theming
   online_tab.py                 Live acquisition + plotting, with a 2D layout sub-tab
   montage_view.py                2D channel/tile layout view + layout table export
   montage_view_3d.py             3D channel/tile layout view (rotatable)
+  settings_tab.py                Settings tab: edits config.py (comments kept)
   offline_tab.py                 Session merge + offline pipeline UI
   decoders_tab.py                 Decoder benchmarking + training UI
   neurofeedback_tab.py             Real-time decoding + co-adaptation engine

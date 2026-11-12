@@ -210,6 +210,24 @@ table's `distance_mm` and 3D coordinates are the true values.
 
 ---
 
+## `config_io.py`
+
+Reads and edits `config.py` for the Settings tab (no Qt).
+`ConfigFile(path)` executes the file and holds `values` (the settings in
+`EDITABLE`), `comment_for(name, key=None)` / `heading_for(name, key)` (the
+documenting comments), `diff(new_values)` and `save(new_values)`. Saving
+patches only changed values at their source position (AST spans): dicts
+with the same keys and equal-length lists are patched entry by entry,
+added/removed entries of one-entry-per-line dicts are inserted/deleted as
+lines, anything else is rewritten in the file's style; paths under the
+project become `os.path.join(BASE_DIR, ...)`. The patched source is
+executed and compared to the intended values before an atomic replace, a
+`.bak` backup is written, and `ConfigChangedError` is raised if the file
+changed on disk since loading. `apply_to_module(module, values)` updates the
+imported `config` module in place.
+
+---
+
 ## `helmet_templates.py`
 
 Helmet templates: every tile slot of a helmet, learned from LSL stream

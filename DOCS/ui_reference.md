@@ -328,3 +328,21 @@ Also includes an **`LSLStreamCatcher`** to preview `Neurofeedback_Out`
 samples live inside the tab, and a **Custom Script Executor** sub-tab that
 runs an arbitrary `.py` file as a subprocess (the more general-purpose
 successor to always launching the generated runner).
+
+---
+
+## `settings_tab.py` — `SettingsTab`
+
+Edits every setting of `config.py` from the GUI (see
+[`configuration.md`](configuration.md) for how saving keeps the file
+hand-editable). Sections: **General** (default experiment, co-adaptation
+threshold), **Preprocessing defaults** (one typed field per
+`DEFAULT_PREPROC_CONFIG` entry, grouped under the file's section comments,
+plus the extinction-coefficient table), **Folders and files** (with
+Browse), **Columns** (non-signal columns) and **Experiment profiles** (an
+editable table; add/remove rows). Every field shows its `config.py`
+comment. **Save to config.py** validates the form (e.g. MBLL wavelengths
+need extinction coefficients, the default experiment must exist), lists
+the changes for confirmation, writes them and applies them to the running
+app; **Reload from config.py** discards unsaved edits.
+

@@ -1,5 +1,31 @@
 # `config.py` Reference
 
+**Two ways to change settings, one file.** Edit `config.py` directly, or use
+the app's **Settings** tab (`ui/settings_tab.py`, via `core/config_io.py`).
+The tab reads `config.py`, shows every setting below with the comment that
+documents it in the file (section comments become headings), and **Save**
+writes only the changed values back into `config.py`, in place:
+
+- comments, citations, blank lines and the order of entries are untouched;
+  trailing comments stay aligned;
+- folder paths inside the project stay written as `os.path.join(BASE_DIR, ...)`;
+- added/removed dict entries (an experiment profile, an extinction
+  coefficient) are inserted/deleted as their own lines;
+- the new file is executed and checked to give exactly the intended values
+  before it replaces the old one, which is kept as `config.py.bak`;
+- if `config.py` was edited by hand after the tab loaded it, Save refuses
+  and offers to reload instead (the tab also reloads hand edits
+  automatically when shown, if it has no unsaved changes).
+
+Saved values are applied to the running app at once; fields other tabs
+pre-filled at startup show new defaults after a restart.
+
+For developers adding a setting: give it a short comment on its line (or a
+comment block right above it) - that is its description in the tab. A new
+`DEFAULT_PREPROC_CONFIG` entry appears in the tab automatically (field type
+from its value); a new top-level setting must also be listed in
+`core.config_io.EDITABLE` and given a field in `ui/settings_tab.py`.
+
 Global, process-wide **defaults**. UI tabs read from here to pre-fill their
 fields; nothing in the app writes back into this module at runtime (the one
 exception is `register_experiment_profile()`, an explicit API for adding a
