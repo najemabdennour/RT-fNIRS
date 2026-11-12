@@ -8,6 +8,7 @@ from ui.decoders_tab import DecoderTrainingTab
 from ui.themes import THEMES
 from ui.neurofeedback_tab import NeurofeedbackTab
 from ui.experiment_tab import ExperimentDesignTab
+from ui.settings_tab import SettingsTab
 
 
 class LSLVisualizerApp(QMainWindow):
@@ -53,12 +54,14 @@ class LSLVisualizerApp(QMainWindow):
         self.tab_decoder = DecoderTrainingTab(self)
         self.tab_neurofeedback = NeurofeedbackTab(self)
         self.tab_experiment = ExperimentDesignTab(self)
+        self.tab_settings = SettingsTab(self)
         
         self.tabs_container.addTab(self.tab_online, "Online Streaming Monitor")
         self.tabs_container.addTab(self.tab_neurofeedback, "Real-Time Neurofeedback Engine")
         self.tabs_container.addTab(self.tab_experiment, "Experiment Design & Presentation")  
         self.tabs_container.addTab(self.tab_offline, "Offline Analytical Processing")
         self.tabs_container.addTab(self.tab_decoder, "Decoder Training / Evaluation")
+        self.tabs_container.addTab(self.tab_settings, "Settings")
 
         global_layout.addWidget(self.tabs_container)
 

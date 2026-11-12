@@ -2,6 +2,13 @@
 Global configuration for the real-time and offline fNIRS processing toolbox:
 UI defaults, preprocessing parameter defaults, data folder paths, non-signal
 column names, and per-experiment behavioral alignment profiles.
+
+Edit this file directly, or from the app's Settings tab: the tab shows each
+setting with the comment written next to (or section comment above) it here,
+and on Save rewrites only the changed values in place - comments and layout
+are kept, and the previous version is saved as config.py.bak. Keep values as
+plain literals (and folder paths as os.path.join(BASE_DIR, ...)) so the tab
+can edit them.
 """
 import os
 
