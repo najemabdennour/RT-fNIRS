@@ -2,6 +2,10 @@
 
 ## `main_window.py` — `LSLVisualizerApp`
 
+The top bar holds the theme selector, a **Font size** box (7–24 pt) that
+rescales the whole interface live and saves the size to `config.py`
+(`UI_FONT_SIZE`, used at the next start), and the fullscreen toggle.
+
 The top-level `QMainWindow`. Owns the single shared
 `core.data_manager.DataSession` (`self.global_session_cache`), the theme
 switcher (backed by `ui.themes.THEMES`), a fullscreen toggle, and registers
@@ -45,11 +49,13 @@ danger, console, …) plus `bg`/`fg` for the matplotlib views.
 on the whole `QApplication`, Qt's Fusion style, a `QPalette` and one
 stylesheet, both generated from the tokens (`build_palette`, `build_qss`).
 So every widget, dialog, drop-down list and tooltip follows the theme,
-never the desktop's own colors.
+never the desktop's own colors. `apply_theme(name, font_pt)` also sets the
+base font size: every font size in the stylesheet is relative to it
+(descriptions 2 pt smaller, titles 1 pt larger, the `display` readout ×2.6).
 
 Widgets don't hard-code colors; they declare a role with
 `set_role(widget, role)`: buttons `primary` (default), `secondary`,
-`success`, `danger`; labels `muted`, `title`, `status`, `ok` / `warn` /
+`success`, `danger`; labels `muted`, `title`, `display`, `status`, `ok` / `warn` /
 `error`; text boxes `console` (log terminals, dark in every theme). The
 collapsible-section header is styled by its object name `SectionHeader`.
 

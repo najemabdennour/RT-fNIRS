@@ -36,6 +36,7 @@ session-only experiment profile).
 | Name | Default | Used by |
 |---|---|---|
 | `DEFAULT_EXPERIMENT` | `"new_experiment"` | Experiment profile pre-selected in the Offline tab at startup. Read-only; the selected profile is passed explicitly to the processing code. |
+| `UI_FONT_SIZE` | `10` | Application font size (pt). Changed live from the top bar's *Font size* box, which saves it here |
 | `COADAPTATION_ACCEPTANCE_CRITERIA` | `0.8` | `neurofeedback_tab.py` — probability threshold above which a trial is accepted into the co-adaptation training set |
 
 ## `DEFAULT_PREPROC_CONFIG`
