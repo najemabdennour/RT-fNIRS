@@ -48,7 +48,8 @@ then in the app.
 is a separate **strategy method** registered in a dispatch table:
 
 ```python
-SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'mbll', 'filter', 'detrend', 'scaling']
+SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'short_channel_regression',
+                     'short_channel_rejection', 'mbll', 'filter', 'detrend', 'scaling']
 
 class SignalPreprocessor:
     def __init__(self, log_callback=None, warning_callback=None):
@@ -58,6 +59,8 @@ class SignalPreprocessor:
             'channel_filter': self._step_channel_filter,
             'sci': self._step_sci,
             'sqa': self._step_sqa,
+            'short_channel_regression': self._step_short_channel_regression,
+            'short_channel_rejection': self._step_short_channel_rejection,
             'mbll': self._step_mbll,
             'filter': self._step_filter,
             'detrend': self._step_detrend,
@@ -141,7 +144,8 @@ from core.math_kernel import (
     savgol_smooth,
 )
 
-SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'mbll', 'smooth', 'filter', 'detrend', 'scaling']
+SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'short_channel_regression',
+                     'short_channel_rejection', 'mbll', 'smooth', 'filter', 'detrend', 'scaling']
 
 # in __init__:
         self._step_handlers = {

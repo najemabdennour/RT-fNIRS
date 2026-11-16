@@ -57,6 +57,9 @@ session's run.
 | `sqa_cv_threshold` | `7.5` | SQA coefficient-of-variation rejection limit (%) |
 | `sci_correlation_min` | `0.5` | SCI minimum cross-wavelength correlation |
 | `enable_mbll` | `True` | Offline pipeline's default "run" state for the `mbll` step |
+| `enable_ssr` | `True` | Default "run" state of the `short_channel_regression` step (Offline and Neurofeedback) |
+| `enable_short_rejection` | `True` | Default "run" state of the `short_channel_rejection` step (Offline and Neurofeedback) |
+| `short_channel_max_distance_mm` | `8.4` | Source–detector distance (mm) at or below which a channel is a short-separation channel. The adult optimum from Brigadoi & Cooper (2015), Neurophotonics 2(2):025005 — see the comment in `config.py`; raise it to your montage's shortest pairs (11 mm for LUMO) |
 | `filter_low_band` | `0.05` | Butterworth low cutoff (Hz) |
 | `filter_high_band` | `0.5` | Butterworth high cutoff (Hz) |
 | `butterworth_order` | `5` | Filter order |
@@ -85,6 +88,12 @@ Computed relative to `config.py`'s own directory (`BASE_DIR`):
 2D Layout) that the Dev Mode NIRS simulator streams, so the 2D layout can be
 used without hardware. Default `data/channel_layout_2026-11-02_152351.csv`;
 set it to `None` (or a missing file) for 200 generic channels.
+
+`CHANNEL_LAYOUT_FILE` — the channel layout table (saved from the Online
+tab's 2D/3D Layout) that gives each channel's source–detector distance and
+optode positions for the offline pipeline's short-channel steps; recorded
+CSVs carry no geometry, while live streams supply it from their metadata.
+Default `data/channel_layout_2026-11-02_152351.csv`.
 
 `HELMET_TEMPLATE_DIR` — where helmet templates (all tile slots of a
 helmet, learned from LSL stream metadata) are stored, one JSON file per

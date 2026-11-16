@@ -17,6 +17,7 @@ Pure numpy/scipy math, no pandas, no state.
 | `calculate_coefficient_of_variation(series)` | `std / mean * 100`; `inf` if mean is 0. |
 | `apply_mbll_inversion(od_w1, od_w2, e_inv)` | Applies the inverted extinction-coefficient matrix to two optical-density series, returning stacked HbO/HbR concentration rows. |
 | `optical_density(intensity)` | Raw intensity → optical density, `-ln(I / mean(I))` per column. If any value is ≤ 0, values are replaced by their absolute value and clipped at the smallest non-zero channel minimum, so the log is always defined. Returns `(od, n_non_positive)`. |
+| `short_channel_regression(long_signal, short_signal)` | Least-squares removal of the scalp signal a short-separation channel shares with a long channel: `alpha = <A_s, A_l> / <A_s, A_s>`, returns `(A_l - alpha * A_s, alpha)` (Scholkmann et al. 2014, NeuroImage 85:6–27, Eqs. 26–27). |
 
 ---
 
@@ -54,6 +55,8 @@ result = engine.run_steps(dataframe, pipeline_steps, params, excluded_cols=[...]
 | `channel_filter` | Manual keep/exclude by name (`manual_exclude_channels` / `manual_keep_channels` in `params`). Matches both the exact column name and its base name (pre-`rsplit('_', 1)`), so a name saved before or after MBLL still matches. Independent of SCI/SQA's live thresholds — for reproducing a fixed exclusion list. |
 | `sci` | Drops both wavelength columns of an optode pair if their cross-wavelength correlation is below `sci_threshold`. |
 | `sqa` | Drops individual channels whose coefficient of variation exceeds `cv_threshold`. On OD input it uses `exp(-OD) = I / mean(I)`, which has exactly the CV of the original intensity, so rejections are the same as running SQA before OD. |
+| `short_channel_regression` | Regresses each long channel's nearest short-separation channel out of it (`math_kernel.short_channel_regression`); short channels are left unchanged. Needs OD or HbO/HbR data and the geometry params (see *Short-separation channels* below). The nearest short channel is the one of the same wavelength (after `mbll`: the same chromophore) whose 3D midpoint is closest; without midpoints the mean of the short channels of that wavelength is the regressor. Warns and skips on raw intensity, without distances, or when no channel is at or below the threshold. |
+| `short_channel_rejection` | Drops every short-separation channel (distance ≤ `short_channel_max_distance_mm`) so scalp-only channels never become decoder features; run it after `short_channel_regression`, which still needs them. Pairs are recorded in `rejected_channels` with reason `'short'`. Channels with no known distance are kept (warning). |
 | `mbll` | Converts paired wavelength columns to `_HbO`/`_HbR` concentration columns via the Modified Beer-Lambert Law. Requires `mbll_wavelengths` and matching `extinction_coefficients` entries. Accepts raw intensity (converted to OD internally) or OD from the `optical_density` step (used as is; results are identical). Tags its output `'hb'`. Warns when supposed raw intensity contains values ≤ 0, which usually means an OD checkpoint CSV was reloaded without re-running the OD step. |
 | `filter` | Butterworth bandpass (`low_cut`, `high_cut`, `fs`, `butterworth_order`). Checks the buffer length against `bandpass_min_samples()` first; if it is too short, or the parameters are invalid (e.g. high cut above Nyquist), the data passes through **unfiltered** and a warning naming the required length is issued via `warn()`. |
 | `detrend` | Linear batch detrending via `nilearn.signal._detrend` (optional dependency — skipped with a warning if not installed). Batch count is clamped to the buffer length. |
@@ -72,13 +75,37 @@ signal columns hold: absent = raw intensity, `'od'` = optical density,
 `'hb'` = HbO/HbR. pandas carries `attrs` through every operation the
 pipeline uses, but **not through a CSV**: a checkpoint saved after the OD
 step reloads as "raw intensity", so reloaded OD data must not be fed to
-`mbll` (it warns).
+`mbll` or `short_channel_regression` (they warn).
+
+### Short-separation channels
+
+Both short-channel steps read the same params: `channel_lengths_mm`
+(`{pair key: source–detector distance in mm}`), `channel_midpoints`
+(`{pair key: 3D midpoint in mm}`) and `short_channel_max_distance_mm`
+(default 8.4). The pair key is `core.montage.pair_key(column)` — the column
+name without its trailing `_<wavelength>` / `_HbO` part, the same split the
+engine uses to pair wavelengths — and both dicts come from
+`core.montage.channel_geometry(montage)`: from the live stream's metadata in
+the Neurofeedback tab, from the channel layout table
+(`config.CHANNEL_LAYOUT_FILE`) in the Offline tab, since recorded CSVs
+carry no geometry. A channel is *short* when its distance is at or below the
+threshold. The 8.4 mm default is the optimum short-separation distance for
+adults reported by Brigadoi & Cooper (2015), *How short is short? Optimum
+source-detector distance for short-separation channels in functional
+near-infrared spectroscopy*, Neurophotonics 2(2):025005,
+doi:10.1117/1.NPh.2.2.025005 (the largest separation whose brain
+sensitivity stays within 5% of a 30 mm channel; 2.15 mm for term-age
+infants). The paper gives an optimum distance, not a cutoff, so set the
+threshold to your montage: LUMO's shortest within-tile pairs are 10.0 and
+10.8 mm, so 11 mm includes them, and 8.4 mm matches no LUMO channel (the
+steps then warn and do nothing).
 
 ### Rejection tracking
 
-`sci` and `sqa` append to `self.rejected_channels` as they drop columns
-(SCI logs the shared base name since it drops a pair together; SQA logs the
-exact column name since it can drop one wavelength independently).
+`sci`, `sqa` and `short_channel_rejection` append to
+`self.rejected_channels` as they drop columns (SCI and short-channel
+rejection log the shared base name since they drop a pair together; SQA
+logs the exact column name since it can drop one wavelength independently).
 `get_rejected_channel_names()` returns the deduplicated, sorted list;
 `reset_rejections()` clears it — call this at the start of each fresh run.
 `OfflineDataPreprocessor.get_rejected_channels()` is a passthrough to this.
@@ -202,6 +229,8 @@ distance between its optodes' positions.
 | `head_outline(montage, positions, method, extra_points=None)` | `(centre_xy, radius, approximate)`: exact through the projected fiducials for `'azimuthal'` layouts; otherwise centred on the layout origin with radius = ¼ circumference of a sphere fitted to the 3D optodes (`approximate=True`). |
 | `montage_from_table(table, channel_names=None)` | Rebuilds a `Montage` from a saved layout table, including its 2D layout (`layout_*` columns) as `layout_2d`, and `system` / `fiducials` from the `system_*` / `fiducial_*` columns when present. With `channel_names`, follows the stream's channel order (unmatched names get no optodes). |
 | `write_lsl_desc(montage, desc)` | Writes a montage into an LSL `StreamInfo.desc()` in LUMO's layout, plus a `<layout>` X/Y child per probe for the saved 2D position, so `parse_montage` recovers it. Also writes `<lumo>` (acquisition software) and the fiducials when known. Used by the Dev Mode simulator. |
+| `pair_key(channel_name)` | The optode-pair part of a channel column name (before the last `_`), shared with the signal engine's wavelength pairing. |
+| `channel_geometry(montage)` | `(lengths_mm, midpoints)` keyed by `pair_key`: each pair's source–detector distance (the stream's `length`, else from the optode positions) and 3D midpoint — the geometry params of the short-channel pipeline steps. |
 | `montage_table(montage, positions_2d=None, tile_slots=None)` | One row per channel: `channel`, `wavelength_nm`, `source`, `detector`, `source_tile`, `detector_tile`, their serials, `same_tile`, `distance_mm` (the stream's `length`, else computed from positions), source/detector/midpoint X/Y/Z (mm) and their 2D layout coordinates; `source_slot`/`detector_slot` with `tile_slots`; then constant `system_*` columns and `fiducial_<name>_x/y/z`, so the table can recreate the stream's metadata. |
 
 Note: the 2D projection is for display. Distances in the flattened layout

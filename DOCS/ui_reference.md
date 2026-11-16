@@ -199,12 +199,21 @@ Three concerns in one tab:
 
 1. **Session merge** — a thin UI over `core.offline_processor.OfflineSessionCombiner`: pick or auto-discover today's recordings/behavioral folders, combine per-run CSVs into one session file.
 2. **Experiment profile selector** — the *Active Experiment* dropdown lists `config.EXPERIMENT_PROFILES` (default `config.DEFAULT_EXPERIMENT`). The selection is read from the dropdown and passed explicitly to the session merge and the pipeline (`params['active_experiment']`); it decides whether a behavioral log is mandatory and how `epoch_prep` aligns it. *Register Profile* adds a session-only profile from a name + comma-separated column list via `config.register_experiment_profile()` (label column = `condition` if listed).
-3. **Pipeline** — a `PipelineStepTable` (optical_density, channel_filter, sci, sqa, mbll, epoch_prep, filter, detrend, scaling, averaging, block_avg) driving `core.offline_processor.OfflineDataPreprocessor.run_preprocessing_pipeline`, with per-step checkpoint export. Engine warnings (e.g. a skipped filter) appear in the log terminal at WARNING level.
+3. **Pipeline** — a `PipelineStepTable` (optical_density, channel_filter, sci, sqa, short_channel_regression, short_channel_rejection, mbll, epoch_prep, filter, detrend, scaling, averaging, block_avg) driving `core.offline_processor.OfflineDataPreprocessor.run_preprocessing_pipeline`, with per-step checkpoint export. Engine warnings (e.g. a skipped filter) appear in the log terminal at WARNING level.
 
 Also hosts the **Manual Channel Filter List** panel: type/paste channel
-names or load a saved list, and — after a run where SCI/SQA actually
-rejected something — **Save Rejected Channels...** exports them via
-`core.channel_lists.save_channel_list` for reuse in the Neurofeedback tab.
+names or load a saved list, and — after a run where SCI, SQA or
+short-channel rejection actually dropped something — **Save Rejected
+Channels...** exports them via `core.channel_lists.save_channel_list` for
+reuse in the Neurofeedback tab.
+
+And the **Short-Separation Channels** panel for the two short-channel
+steps: the *Channel Layout Table* (default `config.CHANNEL_LAYOUT_FILE`)
+that supplies each channel's source–detector distance and optode positions,
+and the *Short Channel Max Distance* (default 8.4 mm, the adult optimum
+from Brigadoi & Cooper 2015 — raise it to your montage's shortest pairs,
+e.g. 11 mm for LUMO). Both steps run by default; with no table, or no
+channel at or below the threshold, they log a warning and skip.
 
 ---
 
@@ -230,7 +239,8 @@ loop runs on a background `QThread`, `NeurofeedbackWorker`.
 - **Signal Source** — target stream type selector (NIRS/EEG/MEG), mirroring `online_tab.py`.
 - **Neurofeedback Decoder Configuration** — model path, co-adaptation toggle + decoder choice + base training data path, and a **"Use Co-adapted Decoder for Live Predictions"** checkbox (see Co-adaptation below).
 - **Channel Filter List** — load a channel-exclusion list (e.g. one exported from the Offline tab) for the real-time `channel_filter` step.
-- **Real-Time Preprocessing Pipeline** (`CollapsibleSection`, collapsed by default) — a `PipelineStepTable` (optical_density, channel_filter, sci, sqa, mbll, filter, detrend, scaling, `averaging (feature_vector)`), plus the numeric threshold/filter/scaler parameter fields. `optical_density` runs by default (`config.DEFAULT_PREPROC_CONFIG` `enable_od`); every other step is unchecked. Enable a step only if the deployed model was trained on data processed the same way.
+- **Short-channel geometry** needs no file: the worker reads each channel's source–detector distance and optode positions from the stream's own metadata (`core.montage.parse_montage` → `channel_geometry`), falling back to `config.CHANNEL_LAYOUT_FILE` matched by channel name for streams without geometry, and logs how many pairs are at or below the threshold.
+- **Real-Time Preprocessing Pipeline** (`CollapsibleSection`, collapsed by default) — a `PipelineStepTable` (optical_density, channel_filter, sci, sqa, short_channel_regression, short_channel_rejection, mbll, filter, detrend, scaling, `averaging (feature_vector)`), plus the numeric threshold/filter/scaler parameter fields and the *Short Channel Max Distance (mm)*. `optical_density`, `short_channel_regression` and `short_channel_rejection` run by default (`config.DEFAULT_PREPROC_CONFIG` `enable_od` / `enable_ssr` / `enable_short_rejection`); every other step is unchecked. Enable a step only if the deployed model was trained on data processed the same way.
 
 **Worker lifecycle (`NeurofeedbackWorker.run()`):**
 

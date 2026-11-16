@@ -10,7 +10,7 @@ and in real time.
 
 - **Acquire** live NIRS/EEG/MEG streams over [Lab Streaming Layer](https://labstreaminglayer.org/) (LSL), synced to experiment event markers.
 - **Design** visual stimulus/neurofeedback paradigms without writing Pygame code, and run them as a generated, self-contained script.
-- **Preprocess** recordings — SCI/SQA quality control, MBLL concentration conversion, filtering, detrending, scaling, epoching — through one engine shared by the offline and real-time paths.
+- **Preprocess** recordings — optical density, SCI/SQA quality control, short-separation channel regression and rejection, MBLL concentration conversion, filtering, detrending, scaling, epoching — through one engine shared by the offline and real-time paths.
 - **Train** and benchmark decoders across a dozen scikit-learn classifiers, then deploy the winner.
 - **Run real-time neurofeedback**: live prediction, probability feedback pushed back over LSL to the experiment display, and optional co-adaptive retraining during the session.
 
