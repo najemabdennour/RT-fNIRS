@@ -155,11 +155,15 @@ class SettingsTab(QWidget):
         grid.addWidget(desc, row, 2)
 
     def _build_general(self):
-        """General section: default experiment profile and co-adaptation threshold."""
+        """General section: default experiment profile, application font size and co-adaptation threshold."""
         grid = self._grid_section("General")
         self.combo_default_experiment = QComboBox()
         self._add_row(grid, _label('DEFAULT_EXPERIMENT'), self.combo_default_experiment,
                       self.cfg.comment_for('DEFAULT_EXPERIMENT'))
+        self.spin_font = QSpinBox()
+        self.spin_font.setRange(7, 24)
+        self.spin_font.setSuffix(" pt")
+        self._add_row(grid, "Application font size", self.spin_font, self.cfg.comment_for('UI_FONT_SIZE'))
         self.spin_coadapt = QDoubleSpinBox()
         self.spin_coadapt.setRange(0.0, 1.0)
         self.spin_coadapt.setDecimals(3)
@@ -303,6 +307,7 @@ class SettingsTab(QWidget):
         """Fills every field from the loaded config.py values."""
         v = self.cfg.values
         self.spin_coadapt.setValue(float(v.get('COADAPTATION_ACCEPTANCE_CRITERIA', 0.0)))
+        self.spin_font.setValue(int(v.get('UI_FONT_SIZE', 10)))
 
         pre = v.get('DEFAULT_PREPROC_CONFIG', {})
         for key, widget in self.preproc_widgets.items():
@@ -341,6 +346,8 @@ class SettingsTab(QWidget):
         """
         values = {'DEFAULT_EXPERIMENT': self.combo_default_experiment.currentText(),
                   'COADAPTATION_ACCEPTANCE_CRITERIA': round(self.spin_coadapt.value(), 6)}
+        if 'UI_FONT_SIZE' in self.cfg.values:
+            values['UI_FONT_SIZE'] = self.spin_font.value()
 
         original = self.cfg.values.get('DEFAULT_PREPROC_CONFIG', {})
         pre = {}
@@ -504,6 +511,7 @@ class SettingsTab(QWidget):
             QMessageBox.critical(self, "Save Failed", f"config.py was not changed:\n\n{e}")
             return
         config_io.apply_to_module(config, copy.deepcopy(self.cfg.values))
+        self._sync_font_size()
         self.populate()
         self.lbl_status.setText(f"Saved {len(changes)} change(s) to config.py (backup: config.py.bak).")
         QMessageBox.information(
@@ -514,6 +522,13 @@ class SettingsTab(QWidget):
             "Fields already filled in other tabs (thresholds, cut-offs, the experiment list) and the "
             "helmet-template folder show the new defaults after restarting the app.")
 
+    def _sync_font_size(self):
+        """Applies config.UI_FONT_SIZE to the main window's font size box (and so to the whole app)."""
+        spin = getattr(self.window(), 'spin_font_size', None)
+        size = getattr(config, 'UI_FONT_SIZE', None)
+        if spin is not None and size is not None and spin.value() != int(size):
+            spin.setValue(int(size))
+
     def reload(self):
         """Re-reads config.py, asking first if the form has unsaved changes."""
         if self.has_unsaved_changes() and QMessageBox.question(
@@ -522,6 +537,7 @@ class SettingsTab(QWidget):
             return
         self.cfg.reload()
         config_io.apply_to_module(config, copy.deepcopy(self.cfg.values))
+        self._sync_font_size()
         self.populate()
 
     def showEvent(self, event):

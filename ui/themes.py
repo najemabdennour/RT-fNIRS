@@ -7,12 +7,14 @@ generates one application-wide stylesheet and build_palette() a matching
 QPalette, so every widget - including dialogs, drop-down lists, tooltips and
 widgets no stylesheet rule names - follows the theme instead of the desktop's
 own colors. apply_theme() installs both on the QApplication (with Qt's
-platform-independent Fusion style).
+platform-independent Fusion style) at a chosen base font size; all
+font sizes are relative to it.
 
 Widgets never hard-code colors: they declare a semantic role with
 set_role(widget, role) and the theme colors it. Roles:
   buttons:  'primary' (default look), 'secondary', 'success', 'danger'
-  labels:   'muted' (small grey descriptions), 'title', 'status',
+  labels:   'muted' (small grey descriptions), 'title', 'display' (large
+            value readout), 'status',
             'ok' / 'warn' / 'error' (status text)
   text:     'console' (log terminals, dark in every theme)
 
@@ -81,12 +83,23 @@ THEMES = {
 _INVERT_ON_HOVER = {"Cyberpunk Neon", "Matrix Hacker"}
 
 
-def build_qss(c, invert_hover=False):
-    """Application stylesheet from a theme's color tokens."""
+DEFAULT_FONT_PT = 10
+FONT_RANGE_PT = (7, 24)
+_current_font_pt = DEFAULT_FONT_PT
+
+
+def build_qss(c, invert_hover=False, font_pt=DEFAULT_FONT_PT):
+    """
+    Application stylesheet from a theme's color tokens. Every font size is
+    relative to font_pt (the base size, in points), so one setting scales
+    the whole interface.
+    """
     hover_text = c['window'] if invert_hover else c['accent_text']
+    f = font_pt
+    small, large, display = max(6, f - 2), f + 1, round(f * 2.6)
     return f"""
         QMainWindow, QDialog {{ background-color: {c['window']}; }}
-        QWidget {{ color: {c['text']}; }}
+        QWidget {{ color: {c['text']}; font-size: {f}pt; }}
         QToolTip {{ background-color: {c['panel']}; color: {c['text']}; border: 1px solid {c['border']}; padding: 4px; }}
 
         QGroupBox {{
@@ -113,7 +126,7 @@ def build_qss(c, invert_hover=False):
             background-color: {c['disabled']}; color: {c['disabled_text']}; border-color: {c['disabled']};
         }}
         QPushButton#SectionHeader {{
-            text-align: left; padding: 9px 14px; font-size: 12px; background-color: {c['header']};
+            text-align: left; padding: 9px 14px; font-size: {large}pt; background-color: {c['header']};
             color: {c['text']}; border: 1px solid {c['border']}; border-radius: 5px;
         }}
         QPushButton#SectionHeader:hover {{ background-color: {c['secondary_hover']}; color: {c['text']}; }}
@@ -137,7 +150,7 @@ def build_qss(c, invert_hover=False):
         QTableWidget, QTableView {{ gridline-color: {c['border']}; alternate-background-color: {c['alt_row']}; }}
         QListWidget::item {{ padding: 3px; }}
         QHeaderView::section {{
-            background-color: {c['header']}; color: {c['text']}; font-weight: bold; font-size: 11px;
+            background-color: {c['header']}; color: {c['text']}; font-weight: bold; font-size: {f}pt;
             padding: 5px 6px; border: none; border-right: 1px solid {c['border']}; border-bottom: 1px solid {c['border']};
         }}
         QTableCornerButton::section {{ background-color: {c['header']}; border: none; }}
@@ -156,8 +169,9 @@ def build_qss(c, invert_hover=False):
         QSplitter::handle {{ background-color: {c['border']}; }}
         QScrollArea {{ background: transparent; border: none; }}
 
-        QLabel[role="muted"] {{ color: {c['muted']}; font-size: 10px; }}
-        QLabel[role="title"] {{ color: {c['text']}; font-weight: bold; font-size: 12px; }}
+        QLabel[role="muted"] {{ color: {c['muted']}; font-size: {small}pt; }}
+        QLabel[role="title"] {{ color: {c['text']}; font-weight: bold; font-size: {large}pt; }}
+        QLabel[role="display"] {{ color: {c['text']}; font-weight: bold; font-size: {display}pt; }}
         QLabel[role="status"] {{ color: {c['muted']}; font-weight: bold; }}
         QLabel[role="ok"] {{ color: {c['ok']}; font-weight: bold; }}
         QLabel[role="warn"] {{ color: {c['warn']}; font-weight: bold; }}
@@ -166,7 +180,7 @@ def build_qss(c, invert_hover=False):
         QTextEdit[role="console"], QPlainTextEdit[role="console"] {{
             background-color: {c['console_bg']}; color: {c['console_text']}; border: 1px solid {c['console_border']};
             border-radius: 6px; padding: 8px; font-family: 'Consolas', 'DejaVu Sans Mono', 'Courier New', monospace;
-            font-size: 12px; selection-background-color: #3a6ea5; selection-color: #ffffff;
+            font-size: {f}pt; selection-background-color: #3a6ea5; selection-color: #ffffff;
         }}
     """
 
@@ -189,14 +203,23 @@ def build_palette(c):
     return pal
 
 
-def apply_theme(name):
-    """Installs the named theme (Fusion style, palette and stylesheet) on the running QApplication."""
+def apply_theme(name, font_pt=None):
+    """
+    Installs the named theme (Fusion style, palette and stylesheet) on the
+    running QApplication, at font_pt points (default: the size last applied).
+    """
+    global _current_font_pt
+    if font_pt is not None:
+        _current_font_pt = int(min(max(font_pt, FONT_RANGE_PT[0]), FONT_RANGE_PT[1]))
     app = QApplication.instance()
     colors = THEMES[name]["colors"]
     if app.style().objectName().lower() != "fusion":
         app.setStyle("Fusion")
     app.setPalette(build_palette(colors))
-    app.setStyleSheet(build_qss(colors, invert_hover=name in _INVERT_ON_HOVER))
+    font = app.font()
+    font.setPointSize(_current_font_pt)
+    app.setFont(font)
+    app.setStyleSheet(build_qss(colors, invert_hover=name in _INVERT_ON_HOVER, font_pt=_current_font_pt))
 
 
 def set_role(widget, role):

@@ -1,11 +1,15 @@
 # ui/main_window.py
 """Main application window hosting the toolbox tabs and the shared session cache."""
-from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QComboBox, QLabel, QPushButton
+from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QComboBox, QLabel, QPushButton, QSpinBox
+
+import config
+from core import config_io
 from core.data_manager import DataSession
 from ui.online_tab import OnlineStreamingTab
 from ui.offline_tab import OfflineAnalysisTab
 from ui.decoders_tab import DecoderTrainingTab
-from ui.themes import THEMES, apply_theme
+from ui.themes import THEMES, apply_theme, DEFAULT_FONT_PT, FONT_RANGE_PT
 from ui.neurofeedback_tab import NeurofeedbackTab
 from ui.experiment_tab import ExperimentDesignTab
 from ui.settings_tab import SettingsTab
@@ -26,7 +30,7 @@ class LSLVisualizerApp(QMainWindow):
         self.apply_theme_config("Dark Studio")
 
     def init_global_ui(self):
-        """Builds the header ribbon (theme selector, fullscreen toggle) and instantiates all tabs."""
+        """Builds the header ribbon (theme selector, font size, fullscreen toggle) and instantiates all tabs."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         global_layout = QVBoxLayout(central_widget)
@@ -38,7 +42,23 @@ class LSLVisualizerApp(QMainWindow):
         self.combo_theme.addItems(list(THEMES.keys()))
         self.combo_theme.currentTextChanged.connect(self.apply_theme_config)
         header_ribbon.addWidget(self.combo_theme)
-        
+
+        header_ribbon.addSpacing(15)
+        header_ribbon.addWidget(QLabel("<b>Font size:</b>"))
+        self.spin_font_size = QSpinBox()
+        self.spin_font_size.setRange(*FONT_RANGE_PT)
+        self.spin_font_size.setSuffix(" pt")
+        self.spin_font_size.setValue(int(getattr(config, 'UI_FONT_SIZE', DEFAULT_FONT_PT)))
+        self.spin_font_size.setToolTip("Font size of the whole application. The chosen size is saved to "
+                                       "config.py (UI_FONT_SIZE) and used at the next start.")
+        self.spin_font_size.valueChanged.connect(self.apply_font_size)
+        header_ribbon.addWidget(self.spin_font_size)
+        # Saves the size to config.py once the user stops changing it.
+        self._font_save_timer = QTimer(self)
+        self._font_save_timer.setSingleShot(True)
+        self._font_save_timer.setInterval(1000)
+        self._font_save_timer.timeout.connect(self._save_font_size)
+
         header_ribbon.addSpacing(15)
         self.btn_fullscreen = QPushButton("Go Fullscreen")
         self.btn_fullscreen.clicked.connect(self.toggle_fullscreen_mode)
@@ -74,10 +94,26 @@ class LSLVisualizerApp(QMainWindow):
             self.showFullScreen()
             self.btn_fullscreen.setText("Exit Fullscreen")
 
+    def apply_font_size(self, size):
+        """Re-applies the current theme at the new font size and schedules saving it to config.py."""
+        self.apply_theme_config(self.combo_theme.currentText())
+        if int(size) != int(getattr(config, 'UI_FONT_SIZE', DEFAULT_FONT_PT)):
+            self._font_save_timer.start()
+
+    def _save_font_size(self):
+        """Writes the chosen font size into config.py (UI_FONT_SIZE), in place, keeping the file's comments."""
+        size = self.spin_font_size.value()
+        try:
+            cfg = config_io.ConfigFile(config.__file__.replace('.pyc', '.py'))
+            cfg.save({'UI_FONT_SIZE': size}, backup=False)
+            config.UI_FONT_SIZE = size
+        except Exception as e:
+            print(f"[Settings] Could not save the font size to config.py: {e}")
+
     def apply_theme_config(self, theme_name):
         """Applies the named theme's stylesheet and redraws the online plots and 2D/3D layouts in its colors."""
         theme = THEMES[theme_name]
-        apply_theme(theme_name)
+        apply_theme(theme_name, self.spin_font_size.value() if hasattr(self, 'spin_font_size') else None)
         self.tab_online.figure.patch.set_facecolor(theme["bg"])
         self.tab_online.refresh_canvas_plots()
         self.tab_online.montage_view.redraw()

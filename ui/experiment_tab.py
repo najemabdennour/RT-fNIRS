@@ -695,7 +695,7 @@ class ExperimentDesignTab(QWidget):
         feedback_layout = QVBoxLayout(feedback_group)
         self.lbl_feedback_value = QLabel("--")
         self.lbl_feedback_value.setAlignment(Qt.AlignCenter)
-        self.lbl_feedback_value.setStyleSheet("font-size: 28px; font-weight: bold;")
+        set_role(self.lbl_feedback_value, "display")
         feedback_layout.addWidget(self.lbl_feedback_value)
         self.bar_feedback = QProgressBar()
         self.bar_feedback.setRange(0, 100)

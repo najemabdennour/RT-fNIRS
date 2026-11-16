@@ -140,7 +140,7 @@ class MontageView3D(QWidget):
 
         # System and helmet/montage lines, matching the 2D view (updated on every change).
         self.lbl_system = QLabel("")
-        self.lbl_system.setStyleSheet("font-weight: bold; font-size: 11px;")
+        set_role(self.lbl_system, "title")
         self.lbl_system.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         layout.addWidget(self.lbl_system)
 

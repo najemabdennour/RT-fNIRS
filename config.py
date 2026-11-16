@@ -17,6 +17,10 @@ import os
 # processing code, never written back here.
 DEFAULT_EXPERIMENT = "new_experiment"
 
+# Application font size (points). Also adjustable from the "Font size" box in
+# the app's top bar, which saves the chosen value back here.
+UI_FONT_SIZE = 12
+
 
 # Default values used to populate the preprocessing fields of the offline and
 # neurofeedback tabs.
