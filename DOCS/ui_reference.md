@@ -37,11 +37,21 @@ with a specific message, as the tabs already do.
 
 ## `themes.py`
 
-Four QSS + matplotlib style presets in a flat `THEMES` dict: **Dark
-Studio** (default), **Classic Light**, **Cyberpunk Neon**, **Matrix
-Hacker**. Each entry supplies a `qss` stylesheet string, an `mpl` style
-name, and `bg`/`fg` hex colors. Pure data — consumed by
-`main_window.apply_theme_config`.
+Four themes in `THEMES`: **Dark Studio** (default), **Classic Light**,
+**Cyberpunk Neon**, **Matrix Hacker**. Each is a set of color tokens
+(`colors`: window, panel, input, text, muted, border, accent, success,
+danger, console, …) plus `bg`/`fg` for the matplotlib views.
+`apply_theme(name)` (called by `main_window.apply_theme_config`) installs,
+on the whole `QApplication`, Qt's Fusion style, a `QPalette` and one
+stylesheet, both generated from the tokens (`build_palette`, `build_qss`).
+So every widget, dialog, drop-down list and tooltip follows the theme,
+never the desktop's own colors.
+
+Widgets don't hard-code colors; they declare a role with
+`set_role(widget, role)`: buttons `primary` (default), `secondary`,
+`success`, `danger`; labels `muted`, `title`, `status`, `ok` / `warn` /
+`error`; text boxes `console` (log terminals, dark in every theme). The
+collapsible-section header is styled by its object name `SectionHeader`.
 
 ## `components.py`
 

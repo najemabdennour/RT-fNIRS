@@ -38,6 +38,7 @@ then in the app.
 | **No mutable global state.** Don't write to `config` at runtime; pass the selected experiment/parameters explicitly as arguments. | Tabs can't silently affect each other. |
 | **Report through callbacks, not `print`.** Use `self.log(...)` for progress and `self.warn(...)` for non-fatal problems (e.g. a skipped step). Raise exceptions for fatal ones. | Messages appear in the right tab's console at the right level. |
 | **Catch expected errors where they happen.** Show a specific `QMessageBox` or log line. Anything uncaught is reported by `ui/exception_handler.py` (traceback in the terminal and an error dialog), and the app keeps running. | The global handler is a safety net, not a substitute for a clear error message. |
+| **No hard-coded colors in widgets.** Use `ui.themes.set_role(widget, role)` (`primary`, `secondary`, `success`, `danger`, `muted`, `title`, `status`, `ok`, `warn`, `error`, `console`); layout-only inline styles (padding, font size) are fine. | Every theme then styles the widget; a hard-coded color breaks at least one theme. |
 | **Every function has a docstring.** Comments explain *why*, not *what*. | Keeps the code readable for the next developer. |
 
 ---
