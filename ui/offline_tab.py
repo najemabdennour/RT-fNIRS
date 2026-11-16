@@ -14,6 +14,7 @@ from PyQt5.QtGui import QFont
 import config
 from core.offline_processor import OfflineDataPreprocessor, OfflineSessionCombiner
 from core.channel_lists import save_channel_list, load_channel_list
+from core.montage import montage_from_table, channel_geometry
 from core.io_utils import read_csv
 from ui.components import CollapsibleSection, PipelineStepTable
 
@@ -28,7 +29,7 @@ class OfflineAnalysisTab(QWidget):
     def __init__(self, parent=None):
         """Builds the tab UI and initialises the rejected-channel cache."""
         super().__init__(parent)
-        self.last_rejected_channels = []  # SCI/SQA rejections from the most recent pipeline run
+        self.last_rejected_channels = []  # SCI / SQA / short-channel rejections from the most recent pipeline run
         self.init_ui()
 
     def init_ui(self):
@@ -165,6 +166,8 @@ class OfflineAnalysisTab(QWidget):
             ("channel_filter", "Manual Channel Filter", "Drops/keeps channels by exact name from a typed or loaded list - e.g. re-apply a previous run's SCI/SQA rejections", False),
             ("sci", "Scalp Coupling Index (SCI)", "Validates optode contact quality via cross-wavelength correlation", defaults["enable_sci"]),
             ("sqa", "Signal Quality Assessment (SQA)", "Filters individual noisy channels via standard Coefficient of Variation (CV)", defaults["enable_sqa"]),
+            ("short_channel_regression", "Short-Channel Regression", "Regresses each long channel's nearest short-separation channel out of it (scalp signal removal, Scholkmann et al. 2014) - needs OD and the channel layout table below", defaults["enable_ssr"]),
+            ("short_channel_rejection", "Short-Channel Rejection", "Removes short-separation channels (source-detector distance at or below the threshold below) so they never become decoder features", defaults["enable_short_rejection"]),
             ("mbll", "Convert to HbO/HbR (MBLL)", "Transforms raw wavelength intensity measurements into concentrations", defaults["enable_mbll"]),
             ("epoch_prep", "Epoch Slicing & Behavioral Setup", "Segments continuous stream indices into aligned time windows", True),
             ("filter", "Apply Butterworth Bandpass Filter", "Attenuates low-frequency baseline drifts and systemic physiological noise", defaults["butterworth_filter"]),
@@ -194,7 +197,7 @@ class OfflineAnalysisTab(QWidget):
         btn_load_channel_list.clicked.connect(self.browse_and_load_channel_list)
         chan_filter_layout.addWidget(btn_load_channel_list, 0, 3)
 
-        self.lbl_rejected_summary = QLabel("Last run rejected: 0 channel(s) via SCI/SQA.")
+        self.lbl_rejected_summary = QLabel("Last run rejected: 0 channel(s) via SCI / SQA / short-channel rejection.")
         self.lbl_rejected_summary.setStyleSheet("color: #b0b0b0; font-size: 10px;")
         chan_filter_layout.addWidget(self.lbl_rejected_summary, 1, 0, 1, 3)
 
@@ -205,6 +208,35 @@ class OfflineAnalysisTab(QWidget):
         chan_filter_layout.addWidget(self.btn_save_rejected, 1, 3)
 
         prep_main_layout.addWidget(chan_filter_group)
+
+        # Short-separation channels: recorded CSVs carry no geometry, so the
+        # distances/positions come from a channel layout table (saved from the
+        # Online tab's 2D/3D Layout); live streams get them from their metadata.
+        short_group = QGroupBox("Short-Separation Channels (used by the 'Short-Channel Regression' and 'Rejection' steps)")
+        short_layout = QGridLayout(short_group)
+        short_layout.setSpacing(8)
+
+        self.ent_layout_table = QLineEdit(getattr(config, 'CHANNEL_LAYOUT_FILE', None) or "")
+        self.ent_layout_table.setPlaceholderText("Channel layout table CSV with each channel's source-detector distance...")
+        btn_browse_layout_table = QPushButton("Browse File")
+        btn_browse_layout_table.clicked.connect(lambda: self.browse_file(self.ent_layout_table, "CSV Files (*.csv)"))
+        short_layout.addWidget(QLabel("Channel Layout Table:"), 0, 0)
+        short_layout.addWidget(self.ent_layout_table, 0, 1, 1, 2)
+        short_layout.addWidget(btn_browse_layout_table, 0, 3)
+
+        self.txt_short_distance = QLineEdit(str(defaults["short_channel_max_distance_mm"]))
+        short_layout.addWidget(QLabel("Short Channel Max Distance (mm):"), 1, 0)
+        short_layout.addWidget(self.txt_short_distance, 1, 1)
+
+        short_note = QLabel(
+            "Channels whose source-detector distance is at or below this are short-separation channels. "
+            "The default (8.4 mm) is the optimum short-separation distance for adults from Brigadoi & Cooper "
+            "(2015), Neurophotonics 2(2):025005; raise it to your montage's shortest pairs (e.g. 11 mm for LUMO)."
+        )
+        short_note.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        short_note.setWordWrap(True)
+        short_layout.addWidget(short_note, 2, 0, 1, 4)
+        prep_main_layout.addWidget(short_group)
 
         param_grid = QGridLayout()
         param_grid.setSpacing(8)
@@ -399,6 +431,7 @@ class OfflineAnalysisTab(QWidget):
                     self.append_status_log("INFO", "Executing pipeline processing pipeline paths in standalone layout configuration modes.")
 
             compiled_steps = self.step_table.compiled_steps()
+            channel_lengths, channel_midpoints = self._load_channel_geometry(compiled_steps)
 
             self.btn_run_preproc.setEnabled(False)
             self.append_status_log("SYSTEM", "COMPILING AND LAUNCHING PIPELINE SEQUENCES IN SELECTED ORDER...")
@@ -419,6 +452,9 @@ class OfflineAnalysisTab(QWidget):
                 'extinction_coefficients': defaults.get('extinction_coefficients', {}),
                 'scaler_type': self.combo_scaler_type.currentText(),
                 'manual_exclude_channels': [c.strip() for c in self.txt_channel_filter_list.text().split(",") if c.strip()],
+                'short_channel_max_distance_mm': float(self.txt_short_distance.text()),
+                'channel_lengths_mm': channel_lengths,
+                'channel_midpoints': channel_midpoints,
             }
 
             session_df = read_csv(sig_file, log_callback=lambda m: self.append_status_log("WARNING", m))
@@ -439,10 +475,10 @@ class OfflineAnalysisTab(QWidget):
                 self.append_status_log("SUCCESS", "Pipeline sequence completed. No intermediate checkpoints requested.")
 
             self.last_rejected_channels = preprocessor.get_rejected_channels()
-            self.lbl_rejected_summary.setText(f"Last run rejected: {len(self.last_rejected_channels)} channel(s) via SCI/SQA.")
+            self.lbl_rejected_summary.setText(f"Last run rejected: {len(self.last_rejected_channels)} channel(s) via SCI / SQA / short-channel rejection.")
             self.btn_save_rejected.setEnabled(bool(self.last_rejected_channels))
             if self.last_rejected_channels:
-                self.append_status_log("INFO", f"SCI/SQA rejected {len(self.last_rejected_channels)} channel(s) this run - use 'Save Rejected Channels...' to export the list.")
+                self.append_status_log("INFO", f"SCI / SQA / short-channel rejection dropped {len(self.last_rejected_channels)} channel(s) this run - use 'Save Rejected Channels...' to export the list.")
 
             QMessageBox.information(self, "Pipeline Complete", "Dataset arrays output smoothly matching your sequence layout constraints.")
         except Exception as e:
@@ -450,6 +486,35 @@ class OfflineAnalysisTab(QWidget):
             QMessageBox.critical(self, "Pipeline Blocked", str(e))
         finally:
             self.btn_run_preproc.setEnabled(True)
+
+    def _load_channel_geometry(self, compiled_steps):
+        """
+        Reads the channel layout table for the short-channel steps.
+
+        Returns:
+            (channel_lengths_mm, channel_midpoints) for the pipeline params
+            (see core.montage.channel_geometry), or ({}, {}) with a WARNING in
+            the log when a short-channel step is enabled but the table is
+            missing or unreadable (the steps then skip themselves).
+        """
+        wanted = any(s['run'] and s['id'] in ('short_channel_regression', 'short_channel_rejection') for s in compiled_steps)
+        path = self.ent_layout_table.text().strip()
+        if not path:
+            if wanted:
+                self.append_status_log("WARNING", "Short-channel steps are enabled but no channel layout table is set - they will be skipped.")
+            return {}, {}
+        if not os.path.exists(path):
+            if wanted:
+                self.append_status_log("WARNING", f"Channel layout table not found: {path} - the short-channel steps will be skipped.")
+            return {}, {}
+        try:
+            lengths, midpoints = channel_geometry(montage_from_table(read_csv(path)))
+        except Exception as e:
+            self.append_status_log("WARNING", f"Could not read the channel layout table '{os.path.basename(path)}': {e}")
+            return {}, {}
+        if wanted:
+            self.append_status_log("INFO", f"Channel geometry loaded from '{os.path.basename(path)}': distances for {len(lengths)} optode pair(s).")
+        return lengths, midpoints
 
     def browse_and_load_channel_list(self):
         """Loads a channel name list (JSON or flat text/CSV) into the manual filter field."""
@@ -466,7 +531,7 @@ class OfflineAnalysisTab(QWidget):
             QMessageBox.critical(self, "Load Failed", f"Could not parse channel list file: {str(e)}")
 
     def save_rejected_channels(self):
-        """Exports the SCI/SQA rejections from the most recent pipeline run to a channel-list file."""
+        """Exports the SCI / SQA / short-channel rejections from the most recent pipeline run to a channel-list file."""
         if not self.last_rejected_channels:
             return
         suggested_name = f"rejected_channels_{datetime.today().strftime('%Y-%m-%d')}.json"
@@ -476,7 +541,7 @@ class OfflineAnalysisTab(QWidget):
         try:
             saved = save_channel_list(
                 file_path, self.last_rejected_channels,
-                notes=f"SCI/SQA-rejected channels from an offline pipeline run on {datetime.today().strftime('%Y-%m-%d')}."
+                notes=f"Channels rejected by SCI / SQA / short-channel rejection in an offline pipeline run on {datetime.today().strftime('%Y-%m-%d')}."
             )
             self.append_status_log("SUCCESS", f"Saved {len(saved)} rejected channel name(s) to '{os.path.basename(file_path)}'.")
             QMessageBox.information(self, "Saved", f"Rejected channel list saved to:\n{file_path}\n\nLoad this in the Neurofeedback tab's Channel Filter section to exclude the same channels live.")

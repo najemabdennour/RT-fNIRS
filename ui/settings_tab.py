@@ -31,6 +31,10 @@ LABELS = {
     'DEFAULT_OUT_SESSIONS': "Merged sessions output folder",
     'DEFAULT_OUT_BEHAVIORAL': "Merged behavioral logs output folder",
     'SIMULATOR_LAYOUT_FILE': "Dev Mode simulator layout table",
+    'CHANNEL_LAYOUT_FILE': "Channel layout table (offline short-channel steps)",
+    'enable_ssr': "Run short-channel regression (default)",
+    'enable_short_rejection': "Run short-channel rejection (default)",
+    'short_channel_max_distance_mm': "Short-channel max distance (mm)",
     'HELMET_TEMPLATE_DIR': "Helmet templates folder",
     'NON_SIGNAL_COLUMNS': "Non-signal columns",
     'butterworth_filter': "Run Butterworth filter (default)",
@@ -232,6 +236,8 @@ class SettingsTab(QWidget):
             edit = QLineEdit()
             if name == 'SIMULATOR_LAYOUT_FILE':
                 edit.setPlaceholderText("empty = 200 generic simulator channels")
+            elif name == 'CHANNEL_LAYOUT_FILE':
+                edit.setPlaceholderText("empty = offline short-channel steps have no distances and are skipped")
             btn = QPushButton("Browse")
             btn.clicked.connect(lambda _c, n=name, e=edit: self._browse_path(n, e))
             field = QWidget()
@@ -440,7 +446,7 @@ class SettingsTab(QWidget):
     def _browse_path(self, name, edit):
         """Picks a folder (or, for the simulator layout, a CSV file) for a path setting."""
         start = edit.text() or self.cfg.base_dir
-        if name == 'SIMULATOR_LAYOUT_FILE':
+        if name in ('SIMULATOR_LAYOUT_FILE', 'CHANNEL_LAYOUT_FILE'):
             path, _ = QFileDialog.getOpenFileName(self, _label(name), start, "CSV Files (*.csv)")
         else:
             path = QFileDialog.getExistingDirectory(self, _label(name), start)

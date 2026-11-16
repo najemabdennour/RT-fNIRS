@@ -88,3 +88,29 @@ def optical_density(intensity):
             min_ = min(min_, channel_min or min_)
         data = np.maximum(data, min_)
     return -np.log(data / data.mean(axis=0)), n_non_positive
+
+
+def short_channel_regression(long_signal, short_signal):
+    """
+    Removes from a long channel the systemic (scalp) component it shares
+    with a short-separation channel, by least-squares regression:
+
+        alpha = <A_s, A_l> / <A_s, A_s>        (Scholkmann et al. 2014, Eq. 27)
+        A_l'  = A_l - alpha * A_s              (Scholkmann et al. 2014, Eq. 26)
+
+    where A_l is the long channel and A_s the short channel, both 1-D series
+    of equal length (optical density or concentration changes).
+
+    Returns:
+        (corrected_long_signal, alpha). A short signal that is all zeros
+        gives alpha = 0 and the long signal unchanged.
+
+    Reference: Scholkmann F. et al. (2014), "A review on continuous wave
+    functional near-infrared spectroscopy and imaging instrumentation and
+    methodology", NeuroImage 85, 6-27.
+    """
+    long_signal = np.asarray(long_signal, dtype=float)
+    short_signal = np.asarray(short_signal, dtype=float)
+    denom = np.dot(short_signal, short_signal)
+    alpha = np.dot(short_signal, long_signal) / denom if denom > 0 else 0.0
+    return long_signal - alpha * short_signal, alpha

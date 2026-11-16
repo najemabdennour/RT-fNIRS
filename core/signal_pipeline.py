@@ -24,13 +24,15 @@ from core.math_kernel import (
     calculate_coefficient_of_variation,
     apply_mbll_inversion,
     optical_density,
+    short_channel_regression,
 )
 
 # Documents the order that makes physical sense by default (OD conversion ->
-# manual overrides -> quality control -> concentration conversion ->
-# filtering/detrending -> scaling). Callers are free to run any subset, in any
-# order they configure.
-SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'mbll', 'filter', 'detrend', 'scaling']
+# manual overrides -> quality control -> short-channel correction and removal
+# -> concentration conversion -> filtering/detrending -> scaling). Callers are
+# free to run any subset, in any order they configure.
+SIGNAL_STEP_ORDER = ['optical_density', 'channel_filter', 'sci', 'sqa', 'short_channel_regression',
+                     'short_channel_rejection', 'mbll', 'filter', 'detrend', 'scaling']
 
 # DataFrame.attrs key recording what the signal columns hold: absent = raw
 # intensity, 'od' = optical density, 'hb' = HbO/HbR concentrations. Lets later
@@ -65,7 +67,7 @@ class SignalPreprocessor:
         """
         self.log_callback = log_callback
         self.warning_callback = warning_callback
-        # {'channel', 'reason', 'metric'} dicts appended by _step_sci/_step_sqa.
+        # {'channel', 'reason', 'metric'} dicts appended by the SCI, SQA and short-channel rejection steps.
         # Callers can export them (core.channel_lists) and re-apply them via
         # 'channel_filter', so short/noisy real-time buffers don't re-decide them.
         self.rejected_channels = []
@@ -74,6 +76,8 @@ class SignalPreprocessor:
             'channel_filter': self._step_channel_filter,
             'sci': self._step_sci,
             'sqa': self._step_sqa,
+            'short_channel_regression': self._step_short_channel_regression,
+            'short_channel_rejection': self._step_short_channel_rejection,
             'mbll': self._step_mbll,
             'filter': self._step_filter,
             'detrend': self._step_detrend,
@@ -105,17 +109,18 @@ class SignalPreprocessor:
         return set(self._step_handlers.keys())
 
     def reset_rejections(self):
-        """Clears the SCI/SQA rejection log - call before each fresh run."""
+        """Clears the SCI/SQA/short-channel rejection log - call before each fresh run."""
         self.rejected_channels = []
 
     def get_rejected_channel_names(self):
         """
-        Unique, sorted list of channel/base names SCI or SQA has dropped so
-        far this run. SCI rejections are stored as the shared base name
-        (e.g. 'S(1)_D(2)') since it drops both wavelength columns of a pair;
-        SQA rejections are stored as the exact column name it dropped, since
-        SQA can reject a single wavelength channel independently of its pair.
-        Both forms are matched correctly by _step_channel_filter.
+        Unique, sorted list of channel/base names SCI, SQA or short-channel
+        rejection has dropped so far this run. SCI and short-channel
+        rejections are stored as the shared base name (e.g. 'S(1)_D(2)') since
+        they drop both wavelength columns of a pair; SQA rejections are stored
+        as the exact column name it dropped, since SQA can reject a single
+        wavelength channel independently of its pair. Both forms are matched
+        correctly by _step_channel_filter.
         """
         return sorted({r['channel'] for r in self.rejected_channels})
 
@@ -294,6 +299,145 @@ class SignalPreprocessor:
         if cols_to_drop:
             data = data.drop(columns=cols_to_drop)
         return data
+
+    # Short-separation channels: both steps read the same geometry params.
+    #   'channel_lengths_mm' {pair key: source-detector distance (mm)} and
+    #   'channel_midpoints' {pair key: 3D midpoint (mm)}, keyed like
+    #   core.montage.pair_key (the column name without its trailing
+    #   '_<wavelength>' / '_HbO' part), typically from
+    #   core.montage.channel_geometry(montage); and
+    #   'short_channel_max_distance_mm' (default 8.4, see config.py).
+
+    def _split_short_long(self, data, params, excluded_cols):
+        """
+        Splits the signal columns into short-separation and long channels.
+
+        Returns:
+            (short_cols, long_cols, unknown_cols): channels whose pair's
+            distance is at most the threshold, those above it, and those with
+            no distance in 'channel_lengths_mm'.
+        """
+        lengths = params.get('channel_lengths_mm') or {}
+        threshold = float(params.get('short_channel_max_distance_mm', 8.4))
+        short, long_, unknown = [], [], []
+        for col in data.columns:
+            if col in excluded_cols:
+                continue
+            length = lengths.get(col.rsplit('_', 1)[0] if '_' in col else col)
+            if length is None:
+                unknown.append(col)
+            elif length <= threshold:
+                short.append(col)
+            else:
+                long_.append(col)
+        return short, long_, unknown
+
+    def _step_short_channel_regression(self, data, params, excluded_cols):
+        """
+        Short-separation channel regression: removes from every long channel
+        the scalp (systemic) signal it shares with its nearest short channel,
+        A_l' = A_l - alpha * A_s with alpha = <A_s, A_l> / <A_s, A_s>
+        (Scholkmann et al. 2014, Eqs. 26-27; see math_kernel). Short channels
+        themselves are left unchanged - run 'short_channel_rejection' after
+        this step to drop them.
+
+        params:
+          'channel_lengths_mm', 'channel_midpoints',
+          'short_channel_max_distance_mm' (default 8.4): see above.
+        The nearest short channel is the one of the same wavelength (or, after
+        'mbll', the same chromophore) whose 3D midpoint is closest to the long
+        channel's; without midpoints the mean of all short channels of that
+        wavelength is the regressor. Requires optical density or HbO/HbR data
+        (run 'optical_density' first). Warns and returns data unchanged on raw
+        intensity, without distances, or without short or long channels.
+        """
+        signal_type = data.attrs.get(SIGNAL_TYPE_ATTR)
+        if signal_type not in ('od', 'hb'):
+            self.warn("Short-channel regression SKIPPED - it needs optical density (or HbO/HbR) data. "
+                      "Run the 'optical_density' step earlier in the pipeline.")
+            return data
+        if not params.get('channel_lengths_mm'):
+            self.warn("Short-channel regression SKIPPED - no channel distances available (a channel layout "
+                      "table, or stream metadata with source-detector distances, is needed).")
+            return data
+
+        short_cols, long_cols, unknown = self._split_short_long(data, params, excluded_cols)
+        threshold = float(params.get('short_channel_max_distance_mm', 8.4))
+        if unknown:
+            self.warn(f"Short-channel regression: {len(unknown)} channel(s) have no known distance and are left as is.")
+        if not short_cols:
+            self.warn(f"Short-channel regression SKIPPED - no channel is {threshold:g} mm or shorter. "
+                      f"Raise 'short_channel_max_distance_mm' to match the montage's shortest pairs.")
+            return data
+        if not long_cols:
+            self.warn("Short-channel regression SKIPPED - every channel with a known distance is a short channel.")
+            return data
+
+        midpoints = params.get('channel_midpoints') or {}
+        suffix = lambda col: col.rsplit('_', 1)[1] if '_' in col else ''
+        pair = lambda col: col.rsplit('_', 1)[0] if '_' in col else col
+        short_by_suffix = {}
+        for col in short_cols:
+            short_by_suffix.setdefault(suffix(col), []).append(col)
+        self.log(f"[SSR Engine] Regressing {len(short_cols)} short channel(s) (<= {threshold:g} mm) out of "
+                 f"{len(long_cols)} long channel(s)...")
+
+        regressors, corrected, nearest_used, unpaired = {}, {}, 0, []
+        for col in long_cols:
+            candidates = short_by_suffix.get(suffix(col))
+            if not candidates:
+                unpaired.append(col)
+                continue
+            located = [c for c in candidates if pair(c) in midpoints]
+            if located and pair(col) in midpoints:
+                chosen = min(located, key=lambda c: np.linalg.norm(midpoints[pair(c)] - midpoints[pair(col)]))
+                regressor = data[chosen].to_numpy(dtype=float)
+                nearest_used += 1
+            else:
+                key = tuple(candidates)
+                if key not in regressors:
+                    regressors[key] = data[list(candidates)].mean(axis=1).to_numpy(dtype=float)
+                regressor = regressors[key]
+            corrected[col], _ = short_channel_regression(data[col].to_numpy(dtype=float), regressor)
+
+        if corrected:
+            data = _with_columns(data, list(corrected), np.column_stack(list(corrected.values())))
+        self.log(f" -> Corrected {len(corrected)} long channel(s): {nearest_used} with their nearest short channel, "
+                 f"{len(corrected) - nearest_used} with the mean of the short channels of the same wavelength.")
+        if unpaired:
+            self.warn(f"Short-channel regression left {len(unpaired)} long channel(s) uncorrected - no short channel "
+                      f"of the same wavelength: {unpaired[:8]}{' ...' if len(unpaired) > 8 else ''}")
+        return data
+
+    def _step_short_channel_rejection(self, data, params, excluded_cols):
+        """
+        Drops every short-separation channel (source-detector distance at
+        most 'short_channel_max_distance_mm'), so channels that sample the
+        scalp rather than the brain never become decoder features. Meant to
+        run after 'short_channel_regression', which still needs them.
+
+        params: 'channel_lengths_mm', 'short_channel_max_distance_mm' (see
+        above). Rejected pairs are recorded in self.rejected_channels with
+        reason 'short'. Warns and returns data unchanged without distances.
+        """
+        if not params.get('channel_lengths_mm'):
+            self.warn("Short-channel rejection SKIPPED - no channel distances available (a channel layout "
+                      "table, or stream metadata with source-detector distances, is needed).")
+            return data
+        short_cols, _, unknown = self._split_short_long(data, params, excluded_cols)
+        threshold = float(params.get('short_channel_max_distance_mm', 8.4))
+        lengths = params['channel_lengths_mm']
+        if unknown:
+            self.warn(f"Short-channel rejection: {len(unknown)} channel(s) have no known distance and are kept.")
+        if not short_cols:
+            self.log(f"[Short Channels] No channel is {threshold:g} mm or shorter - nothing removed.")
+            return data
+        pairs = dict.fromkeys(c.rsplit('_', 1)[0] if '_' in c else c for c in short_cols)
+        for key in pairs:
+            self.rejected_channels.append({'channel': key, 'reason': 'short', 'metric': round(float(lengths[key]), 4)})
+        self.log(f"[Short Channels] Removing {len(short_cols)} short-separation channel column(s) "
+                 f"({len(pairs)} optode pair(s) at or below {threshold:g} mm).")
+        return data.drop(columns=short_cols)
 
     def _step_mbll(self, data, params, excluded_cols):
         """

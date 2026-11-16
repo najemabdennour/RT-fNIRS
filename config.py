@@ -37,6 +37,20 @@ DEFAULT_PREPROC_CONFIG = {
     "sci_correlation_min": 0.5,         # Min SCI (wavelength-pair correlation) to keep a channel
     "enable_mbll": True,                # Modified Beer-Lambert Law conversion
 
+    # Short-Separation Channels
+    # A channel whose source-detector distance is at most the threshold below is
+    # a short-separation channel: it samples the scalp but (almost) not the brain.
+    # The default, 8.4 mm, is the optimum short-separation distance for adults
+    # found by Brigadoi & Cooper (2015), "How short is short? Optimum
+    # source-detector distance for short-separation channels in functional
+    # near-infrared spectroscopy", Neurophotonics 2(2):025005,
+    # doi:10.1117/1.NPh.2.2.025005 (brain sensitivity 5% of a 30 mm channel;
+    # 2.15 mm for term-age infants). Raise it to match your montage: LUMO's
+    # shortest within-tile pairs are 10.0 and 10.8 mm, so 11 includes them.
+    "enable_ssr": True,                 # Regress the nearest short channel out of each long channel
+    "enable_short_rejection": True,     # Drop short-separation channels after the regression
+    "short_channel_max_distance_mm": 8.4,  # Source-detector distance (mm) at or below which a channel is short
+
     # Bandpass Filter
     "filter_low_band": 0.05,            # Low cut-off frequency (Hz)
     "filter_high_band": 0.5,            # High cut-off frequency (Hz)
@@ -92,6 +106,11 @@ DEFAULT_OUT_BEHAVIORAL = os.path.join(BASE_DIR, "data", "preprocessed", "grouped
 # NIRS simulator streams, so the layout can be tested without hardware.
 # Set to None, or point at a missing file, to fall back to 200 generic channels.
 SIMULATOR_LAYOUT_FILE = os.path.join(BASE_DIR, "data", "channel_layout_2026-11-02_152351.csv")
+
+# Channel layout table giving each channel's source-detector distance and optode
+# positions, used by the offline pipeline's short-channel steps (recorded CSVs
+# carry no geometry). Live streams supply this from their own metadata.
+CHANNEL_LAYOUT_FILE = os.path.join(BASE_DIR, "data", "channel_layout_2026-11-02_152351.csv")
 
 # Helmet templates (every tile slot of a helmet, learned from LSL stream
 # metadata) used by the 2D Layout to draw empty slots; one JSON file per cap id.

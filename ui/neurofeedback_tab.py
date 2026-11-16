@@ -18,6 +18,8 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 import config
 from core.lsl_utils import resolve_channel_names
+from core.montage import parse_montage, montage_from_table, channel_geometry
+from core.io_utils import read_csv as read_layout_csv
 from core.signal_pipeline import SignalPreprocessor
 from core.decoders import DECODER_REGISTRY, decoder_selection
 from core.channel_lists import load_channel_list
@@ -161,6 +163,7 @@ class NeurofeedbackWorker(QThread):
             # inlet.info(): the resolve_byprop() record lacks the outlet's full
             # XML description, so it would yield generic 'Ch-i' names.
             self.channel_names = resolve_channel_names(data_inlet.info())
+            self._load_channel_geometry(data_inlet.info())
 
             info = StreamInfo('Neurofeedback_Out', 'Markers', 2, 0, 'string', 'feedback_tx_01')
             feedback_outlet = StreamOutlet(info)
@@ -271,6 +274,43 @@ class NeurofeedbackWorker(QThread):
         except Exception as e:
             self.log_signal.emit("ERROR", f"Worker Exception: {str(e)}")
             self.status_signal.emit("Error/Halted")
+
+    def _load_channel_geometry(self, stream_info):
+        """
+        Supplies the short-channel steps with each channel's source-detector
+        distance and 3D midpoint: from the stream's own metadata when it has
+        them (LUMO publishes them), else from config.CHANNEL_LAYOUT_FILE
+        matched by channel name. Stored in self.preproc_params as
+        'channel_lengths_mm' / 'channel_midpoints' (see core.montage).
+        """
+        wanted = any(s.get('run', True) and s.get('id') in ('short_channel_regression', 'short_channel_rejection')
+                     for s in self.pipeline_steps)
+        lengths, midpoints, source = {}, {}, ""
+        try:
+            lengths, midpoints = channel_geometry(parse_montage(stream_info.as_xml(), self.channel_names))
+            source = "the stream metadata"
+        except Exception as e:
+            self.log_signal.emit("WARNING", f"Could not read channel geometry from the stream metadata: {e}")
+        layout_file = getattr(config, 'CHANNEL_LAYOUT_FILE', None)
+        if not lengths and layout_file and os.path.exists(layout_file):
+            try:
+                lengths, midpoints = channel_geometry(montage_from_table(read_layout_csv(layout_file), self.channel_names))
+                source = f"the layout table '{os.path.basename(layout_file)}'"
+            except Exception as e:
+                self.log_signal.emit("WARNING", f"Could not read channel geometry from the layout table: {e}")
+        self.preproc_params = dict(self.preproc_params, channel_lengths_mm=lengths, channel_midpoints=midpoints)
+        if wanted:
+            if lengths:
+                threshold = float(self.preproc_params.get('short_channel_max_distance_mm', 8.4))
+                n_short = sum(1 for v in lengths.values() if v <= threshold)
+                self.log_signal.emit("INFO", f"Channel geometry from {source}: distances for {len(lengths)} optode "
+                                             f"pair(s), {n_short} at or below {threshold:g} mm (short-separation).")
+                if not n_short:
+                    self.log_signal.emit("WARNING", f"No channel is {threshold:g} mm or shorter - the short-channel steps "
+                                                    f"will do nothing. Raise the threshold to match the montage.")
+            else:
+                self.log_signal.emit("WARNING", "Short-channel steps are enabled but no channel distances are available "
+                                                "(stream metadata without geometry and no layout table) - they will be skipped.")
 
     def _process_and_predict(self, outlet):
         """
@@ -521,6 +561,15 @@ class NeurofeedbackTab(QWidget):
              "Drops noisy channels via Coefficient of Variation. Same channel-count "
              "caution as SCI applies.",
              False),
+            ("short_channel_regression", "Short-Channel Regression",
+             "Regresses each long channel's nearest short-separation channel out of it "
+             "(scalp signal removal, Scholkmann et al. 2014). Needs OD; distances come from "
+             "the stream metadata.",
+             defaults["enable_ssr"]),
+            ("short_channel_rejection", "Short-Channel Rejection",
+             "Removes short-separation channels (distance at or below the threshold below). "
+             "Enable exactly as in the offline pipeline the model was trained with.",
+             defaults["enable_short_rejection"]),
             ("mbll", "Convert to HbO/HbR (MBLL)",
              "Transforms raw wavelength intensities into concentrations. Enable only "
              "if the deployed model was trained on MBLL-converted features.",
@@ -553,6 +602,11 @@ class NeurofeedbackTab(QWidget):
         self.combo_scaler_type = QComboBox()
         self.combo_scaler_type.addItems(["standard", "minmax"])
         self.combo_scaler_type.setCurrentText(defaults.get("scaler_type", "standard"))
+        self.txt_short_distance = QLineEdit(str(defaults["short_channel_max_distance_mm"]))
+        self.txt_short_distance.setToolTip(
+            "Channels with a source-detector distance at or below this are short-separation channels. "
+            "Default 8.4 mm: the adult optimum from Brigadoi & Cooper (2015), Neurophotonics 2(2):025005; "
+            "raise it to your montage's shortest pairs (e.g. 11 mm for LUMO).")
 
         param_grid.addWidget(QLabel("SQA CV Limit (%):"), 0, 0); param_grid.addWidget(self.txt_cv_thresh, 0, 1)
         param_grid.addWidget(QLabel("SCI Correlation Min:"), 0, 2); param_grid.addWidget(self.txt_sci_thresh, 0, 3)
@@ -560,6 +614,7 @@ class NeurofeedbackTab(QWidget):
         param_grid.addWidget(QLabel("Filter High Cut (Hz):"), 1, 2); param_grid.addWidget(self.txt_high_cut, 1, 3)
         param_grid.addWidget(QLabel("Sampling Frequency (Fs):"), 2, 0); param_grid.addWidget(self.txt_fs, 2, 1)
         param_grid.addWidget(QLabel("Scaler Type:"), 2, 2); param_grid.addWidget(self.combo_scaler_type, 2, 3)
+        param_grid.addWidget(QLabel("Short Channel Max Distance (mm):"), 3, 0); param_grid.addWidget(self.txt_short_distance, 3, 1)
         preproc_layout.addLayout(param_grid)
 
         preproc_section.set_content_layout(preproc_layout)
@@ -655,6 +710,7 @@ class NeurofeedbackTab(QWidget):
             'extinction_coefficients': defaults.get('extinction_coefficients', {}),
             'scaler_type': self.combo_scaler_type.currentText(),
             'manual_exclude_channels': self.loaded_exclude_channels,
+            'short_channel_max_distance_mm': float(self.txt_short_distance.text()),
         }
 
     def start_engine(self):

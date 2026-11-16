@@ -500,6 +500,42 @@ def write_lsl_desc(montage, desc):
                 loc.append_child_value(axis, f"{v:.6f}")
 
 
+def pair_key(channel_name):
+    """
+    The optode-pair part of a channel column name: everything before the last
+    '_' (so 'S(1)_D(2)_735' and 'S(1)_D(2)_HbO' share 'S(1)_D(2)'). This is the
+    same split core.signal_pipeline uses to pair wavelengths. A name without
+    '_' is returned unchanged.
+    """
+    return channel_name.rsplit('_', 1)[0] if '_' in channel_name else channel_name
+
+
+def channel_geometry(montage):
+    """
+    Per optode pair geometry for the signal pipeline's short-channel steps.
+
+    Returns:
+        (lengths_mm, midpoints): both keyed by pair_key(channel name).
+        lengths_mm holds the source-detector distance in mm (the stream's
+        'length', else computed from the optode positions); midpoints the 3D
+        midpoint between source and detector (mm) when both positions are
+        known. Pairs with neither are left out of the respective dict.
+    """
+    lengths, midpoints = {}, {}
+    for ch in montage.channels:
+        key = pair_key(ch['name'])
+        src = montage.probes.get(ch['source'], {}).get('position') if ch['source'] else None
+        det = montage.probes.get(ch['detector'], {}).get('position') if ch['detector'] else None
+        length = ch['length']
+        if length is None and src is not None and det is not None:
+            length = float(np.linalg.norm(np.asarray(src) - np.asarray(det)))
+        if length is not None:
+            lengths[key] = float(length)
+        if src is not None and det is not None:
+            midpoints[key] = (np.asarray(src, dtype=float) + np.asarray(det, dtype=float)) / 2
+    return lengths, midpoints
+
+
 def montage_table(montage, positions_2d=None, tile_slots=None):
     """
     Builds one row per stream channel for export.
