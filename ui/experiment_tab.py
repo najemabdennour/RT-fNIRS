@@ -19,6 +19,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from pylsl import StreamInlet, resolve_byprop
 
 from ui.components import CollapsibleSection
+from ui.themes import set_role
 
 # --- Step table layout ---
 STEP_TYPES = ["Fixation Cross", "Text Prompt", "Shape", "Image", "Feedback Window"]
@@ -593,7 +594,7 @@ class ExperimentDesignTab(QWidget):
             "One target_class marker is sent per trial, before that trial's steps run, so "
             "ui/neurofeedback_tab.py's current_target_class is set for the whole trial."
         )
-        note.setStyleSheet("color: #999999; font-size: 10px;")
+        set_role(note, "muted")
         note.setWordWrap(True)
         trial_target_layout.addWidget(note, 1, 0, 1, 4)
 
@@ -629,7 +630,7 @@ class ExperimentDesignTab(QWidget):
             "Engine) expects different marker names. Per-step markers (trial_onset,\n"
             "trial_offset, request_feedback, etc.) are set directly in the LSL Marker column below."
         )
-        note.setStyleSheet("color: #999999; font-size: 10px;")
+        set_role(note, "muted")
         note.setWordWrap(True)
         marker_layout.addWidget(note, 3, 0, 1, 4)
 
@@ -659,7 +660,7 @@ class ExperimentDesignTab(QWidget):
 
         # Launch Controls
         self.btn_run_gui = QPushButton("Run Visual Paradigm (Pygame Engine)")
-        self.btn_run_gui.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 12px;")
+        set_role(self.btn_run_gui, "success")
         self.btn_run_gui.clicked.connect(self.launch_visual_experiment)
         left_layout.addWidget(self.btn_run_gui)
 
@@ -687,7 +688,7 @@ class ExperimentDesignTab(QWidget):
         right_layout.addLayout(catch_ctrl_layout)
 
         self.lbl_catch_status = QLabel("Status: Idle")
-        self.lbl_catch_status.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        set_role(self.lbl_catch_status, "muted")
         right_layout.addWidget(self.lbl_catch_status)
 
         feedback_group = QGroupBox("Latest Probability")
@@ -704,7 +705,7 @@ class ExperimentDesignTab(QWidget):
         right_layout.addWidget(QLabel("All Caught Samples:"))
         self.txt_catch_log = QTextEdit()
         self.txt_catch_log.setReadOnly(True)
-        self.txt_catch_log.setStyleSheet("background-color: #0c0c0c; color: #00ff66; font-family: monospace;")
+        set_role(self.txt_catch_log, "console")
         right_layout.addWidget(self.txt_catch_log)
 
         splitter.addWidget(right_widget)
@@ -1034,12 +1035,12 @@ class ExperimentDesignTab(QWidget):
 
         ctrl_layout = QHBoxLayout()
         self.btn_run_script = QPushButton("▶ Launch Script Paradigm")
-        self.btn_run_script.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 10px;")
+        set_role(self.btn_run_script, "success")
         self.btn_run_script.clicked.connect(self.start_script_execution)
 
         self.btn_stop_script = QPushButton("⏹ Halt Script")
         self.btn_stop_script.setEnabled(False)
-        self.btn_stop_script.setStyleSheet("background-color: #b71c1c; color: white; font-weight: bold; padding: 10px;")
+        set_role(self.btn_stop_script, "danger")
         self.btn_stop_script.clicked.connect(self.stop_script_execution)
 
         ctrl_layout.addWidget(self.btn_run_script)
@@ -1051,7 +1052,7 @@ class ExperimentDesignTab(QWidget):
         log_layout = QVBoxLayout(log_group)
         self.txt_script_log = QTextEdit()
         self.txt_script_log.setReadOnly(True)
-        self.txt_script_log.setStyleSheet("background-color: #0c0c0c; color: #00ff66; font-family: monospace;")
+        set_role(self.txt_script_log, "console")
         log_layout.addWidget(self.txt_script_log)
         layout.addWidget(log_group)
 

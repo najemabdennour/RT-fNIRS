@@ -72,7 +72,8 @@ class ConfigFile:
     def heading_for(self, name, key):
         """
         The section heading a dict entry starts, i.e. a comment block above it
-        that follows a blank line or the opening brace ('' if none).
+        that follows a blank line or the opening brace ('' if none). Lines are
+        joined with newlines: the first is the title, the rest a note.
         """
         return self.headings.get((name, key), '')
 
@@ -325,13 +326,13 @@ def _collect_comments(source):
             block.insert(0, lines[i].strip().lstrip('#').strip())
             i -= 1
         starts_section = i < 0 or not lines[i].strip() or lines[i].rstrip().endswith('{')
-        return " ".join(block), starts_section
+        return "\n".join(block), starts_section
 
     comments, headings = {}, {}
     for node in ast.parse(text).body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             name = node.targets[0].id
-            comments[(name, None)] = trailing.get(node.lineno) or above(node.lineno)[0]
+            comments[(name, None)] = trailing.get(node.lineno) or above(node.lineno)[0].replace("\n", " ")
             if isinstance(node.value, ast.Dict):
                 for key in node.value.keys:
                     if not isinstance(key, ast.Constant):
@@ -340,6 +341,7 @@ def _collect_comments(source):
                     if block and starts_section:
                         headings[(name, key.value)] = block
                         block = ''
+                    block = block.replace("\n", " ")
                     note = trailing.get(key.lineno, '')
                     comments[(name, key.value)] = " ".join(p for p in (block, note) if p)
     return comments, headings

@@ -5,7 +5,7 @@ from core.data_manager import DataSession
 from ui.online_tab import OnlineStreamingTab
 from ui.offline_tab import OfflineAnalysisTab
 from ui.decoders_tab import DecoderTrainingTab
-from ui.themes import THEMES
+from ui.themes import THEMES, apply_theme
 from ui.neurofeedback_tab import NeurofeedbackTab
 from ui.experiment_tab import ExperimentDesignTab
 from ui.settings_tab import SettingsTab
@@ -77,7 +77,7 @@ class LSLVisualizerApp(QMainWindow):
     def apply_theme_config(self, theme_name):
         """Applies the named theme's stylesheet and redraws the online plots and 2D/3D layouts in its colors."""
         theme = THEMES[theme_name]
-        self.setStyleSheet(theme["qss"])
+        apply_theme(theme_name)
         self.tab_online.figure.patch.set_facecolor(theme["bg"])
         self.tab_online.refresh_canvas_plots()
         self.tab_online.montage_view.redraw()

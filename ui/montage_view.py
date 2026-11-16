@@ -20,6 +20,7 @@ import config
 from core import helmet_templates as ht
 from core.io_utils import read_csv, write_csv
 from core.montage import project_2d, montage_table, montage_from_table, head_outline
+from ui.themes import set_role
 
 SOURCE_COLOR = "#e74c3c"
 DETECTOR_COLOR = "#3498db"
@@ -146,7 +147,7 @@ class MontageView(QWidget):
         layout.addWidget(self.lbl_system)
 
         self.lbl_summary = QLabel("")
-        self.lbl_summary.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        set_role(self.lbl_summary, "muted")
         self.lbl_summary.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         layout.addWidget(self.lbl_summary)
 

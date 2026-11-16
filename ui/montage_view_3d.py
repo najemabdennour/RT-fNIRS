@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
 from scipy.spatial import ConvexHull
 
 from core.montage import _fit_sphere
+from ui.themes import set_role
 
 SOURCE_COLOR = "#e74c3c"
 DETECTOR_COLOR = "#3498db"
@@ -144,12 +145,12 @@ class MontageView3D(QWidget):
         layout.addWidget(self.lbl_system)
 
         self.lbl_summary = QLabel("")
-        self.lbl_summary.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        set_role(self.lbl_summary, "muted")
         self.lbl_summary.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         layout.addWidget(self.lbl_summary)
 
         self.lbl_hint = QLabel("Drag to rotate, scroll to zoom; hover an optode or slot for details.")
-        self.lbl_hint.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        set_role(self.lbl_hint, "muted")
         self.lbl_hint.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         layout.addWidget(self.lbl_hint)
 

@@ -20,6 +20,7 @@ import config
 from core.decoders import decoder_selection, DECODER_REGISTRY
 from core.io_utils import read_csv, write_csv
 from ui.components import CollapsibleSection
+from ui.themes import set_role
 
 
 class DecoderTrainingTab(QWidget):
@@ -46,10 +47,8 @@ class DecoderTrainingTab(QWidget):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
-        scroll_area.setStyleSheet("background-color: transparent;")
         
         scroll_content = QWidget()
-        scroll_content.setStyleSheet("background-color: transparent;")
         left_column = QVBoxLayout(scroll_content)
         left_column.setContentsMargins(0, 0, 8, 0)
         left_column.setSpacing(14)
@@ -63,22 +62,6 @@ class DecoderTrainingTab(QWidget):
         data_layout.addWidget(QLabel("Target Evaluation Dataset Files Pool:"))
         self.data_files_list = QListWidget()
         self.data_files_list.setSelectionMode(QAbstractItemView.NoSelection)
-        self.data_files_list.setStyleSheet("""
-            QListWidget {
-                background-color: #1e1e1e;
-                border: 1px solid #454545;
-                border-radius: 4px;
-                color: #ffffff;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 6px;
-                border-bottom: 1px solid #2d2d2d;
-                color: #e0e0e0;
-                font-family: 'Consolas', monospace;
-                font-size: 11px;
-            }
-        """)
         self.data_files_list.setFixedHeight(120)
         data_layout.addWidget(self.data_files_list)
 
@@ -86,11 +69,11 @@ class DecoderTrainingTab(QWidget):
         btn_grid.setSpacing(8)
         
         btn_add_files = QPushButton("➕ Add Preprocessed Data File(s)...")
-        btn_add_files.setStyleSheet("background-color: #383838; color: white; padding: 6px; font-size: 11px;")
+        set_role(btn_add_files, "secondary")
         btn_add_files.clicked.connect(self.browse_and_append_data_files)
         
         btn_clear_files = QPushButton("🗑️ Clear List")
-        btn_clear_files.setStyleSheet("background-color: #5c2424; color: white; padding: 6px; font-size: 11px;")
+        set_role(btn_clear_files, "danger")
         btn_clear_files.clicked.connect(self.data_files_list.clear)
         
         btn_grid.addWidget(btn_add_files)
@@ -108,7 +91,6 @@ class DecoderTrainingTab(QWidget):
         # Every registered decoder, checked by default; unchecked ones are skipped.
         data_layout.addWidget(QLabel("Decoders to Evaluate:"))
         self.decoder_checklist = QListWidget()
-        self.decoder_checklist.setStyleSheet(self.data_files_list.styleSheet())
         self.decoder_checklist.setFixedHeight(160)
         for key in DECODER_REGISTRY.keys():
             item = QListWidgetItem(key.upper())
@@ -121,10 +103,10 @@ class DecoderTrainingTab(QWidget):
         decoder_btn_grid = QHBoxLayout()
         decoder_btn_grid.setSpacing(8)
         btn_select_all_decoders = QPushButton("Select All")
-        btn_select_all_decoders.setStyleSheet("background-color: #383838; color: white; padding: 6px; font-size: 11px;")
+        set_role(btn_select_all_decoders, "secondary")
         btn_select_all_decoders.clicked.connect(lambda: self._set_all_decoder_checks(Qt.Checked))
         btn_deselect_all_decoders = QPushButton("Deselect All")
-        btn_deselect_all_decoders.setStyleSheet("background-color: #383838; color: white; padding: 6px; font-size: 11px;")
+        set_role(btn_deselect_all_decoders, "secondary")
         btn_deselect_all_decoders.clicked.connect(lambda: self._set_all_decoder_checks(Qt.Unchecked))
         decoder_btn_grid.addWidget(btn_select_all_decoders)
         decoder_btn_grid.addWidget(btn_deselect_all_decoders)
@@ -140,7 +122,7 @@ class DecoderTrainingTab(QWidget):
         results_layout.setSpacing(12)
 
         self.btn_run_eval = QPushButton("Run Comparative Multi-Decoder Evaluation Routine")
-        self.btn_run_eval.setStyleSheet("background-color: #1976d2; color: white; font-weight: bold; padding: 10px; font-size: 11px;")
+        set_role(self.btn_run_eval, "primary")
         self.btn_run_eval.clicked.connect(self.execute_comparative_evaluations)
         results_layout.addWidget(self.btn_run_eval)
 
@@ -158,35 +140,13 @@ class DecoderTrainingTab(QWidget):
         self.table_results.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
         self.table_results.setColumnWidth(0, 220)
         
-        self.table_results.setStyleSheet("""
-            QTableWidget {
-                background-color: #1e1e1e;
-                alternate-background-color: #282828;
-                gridline-color: #383838;
-                border: 1px solid #454545;
-                border-radius: 4px;
-            }
-            QTableWidget::item {
-                border-bottom: 1px solid #2d2d2d;
-                color: #ffffff;
-                padding: 8px;
-            }
-            QHeaderView::section {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                font-weight: bold;
-                padding: 8px;
-                border: 1px solid #3e3e3e;
-                font-size: 11px;
-            }
-        """)
         self.table_results.setFixedHeight(260)
         self.table_results.itemSelectionChanged.connect(self.on_table_row_selected)
         results_layout.addWidget(self.table_results)
 
         self.btn_save_csv = QPushButton("Save Evaluation Table (CSV)...")
         self.btn_save_csv.setEnabled(False)
-        self.btn_save_csv.setStyleSheet("background-color: #383838; color: white; padding: 6px; font-size: 11px;")
+        set_role(self.btn_save_csv, "secondary")
         self.btn_save_csv.clicked.connect(self.save_evaluation_table_csv)
         results_layout.addWidget(self.btn_save_csv)
 
@@ -200,7 +160,7 @@ class DecoderTrainingTab(QWidget):
 
         train_layout.addWidget(QLabel("Target Training Dataset:"), 0, 0)
         self.lbl_selected_model_info = QLabel("None Selected (Pick a row from the ranking table above)")
-        self.lbl_selected_model_info.setStyleSheet("color: #b0b0b0; font-style: italic; font-weight: bold;")
+        set_role(self.lbl_selected_model_info, "muted")
         train_layout.addWidget(self.lbl_selected_model_info, 0, 1, 1, 2)
 
         train_layout.addWidget(QLabel("Decoder to Train:"), 1, 0)
@@ -219,7 +179,7 @@ class DecoderTrainingTab(QWidget):
 
         self.btn_train_save = QPushButton("Fit and Train Selected Decoder on Full Data")
         self.btn_train_save.setEnabled(False)
-        self.btn_train_save.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 10px; font-size: 12px;")
+        set_role(self.btn_train_save, "success")
         self.btn_train_save.clicked.connect(self.execute_final_training_and_export)
         train_layout.addWidget(self.btn_train_save, 3, 0, 1, 3)
 
@@ -236,18 +196,7 @@ class DecoderTrainingTab(QWidget):
         
         self.txt_console_logs = QTextEdit()
         self.txt_console_logs.setReadOnly(True)
-        self.txt_console_logs.setStyleSheet("""
-            QTextEdit {
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 12px;
-                background-color: #0c0c0c;
-                color: #00ff66;
-                border: 2px solid #222222;
-                border-radius: 6px;
-                padding: 10px;
-                line-height: 140%;
-            }
-        """)
+        set_role(self.txt_console_logs, "console")
         log_layout.addWidget(self.txt_console_logs)
         master_layout.addWidget(log_group, stretch=5)
 
@@ -485,7 +434,7 @@ class DecoderTrainingTab(QWidget):
         decoder = self.table_results.item(target_row, 1).text().lower()
 
         self.lbl_selected_model_info.setText(f"File: {file_name}")
-        self.lbl_selected_model_info.setStyleSheet("color: #00ff66; font-weight: bold; font-style: normal;")
+        set_role(self.lbl_selected_model_info, "ok")
 
         # Default to the ranked decoder; the user can still pick another one.
         combo_idx = self.combo_train_decoder.findText(decoder.upper())

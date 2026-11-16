@@ -8,6 +8,7 @@ from ui.main_window import LSLVisualizerApp
 def main():
     """Create the Qt application, install the global exception handler, show the main window, and run the event loop."""
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")  # platform-independent look, so the app's themes (not the desktop's) set every color
     install_exception_hook()
     window = LSLVisualizerApp()
     window.show()

@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
 from PyQt5.QtCore import QTimer, Qt
 from pylsl import StreamInlet
 
-from ui.themes import THEMES
+from ui.themes import THEMES, set_role
 from core.simulators import SyntheticNIRSThread, SyntheticMarkerThread
 from core.lsl_client import AdvancedStreamResolver, MarkerDiagnosticWorker, StreamAcquisitionWorker, release_inlets_async
 from core.lsl_utils import resolve_channel_names
@@ -100,12 +100,12 @@ class OnlineStreamingTab(QWidget):
         config_layout.addWidget(self.ent_marker_name, 2, 1)
 
         self.btn_ping_marker = QPushButton("🔍 Ping Marker Stream")
-        self.btn_ping_marker.setStyleSheet("background-color: #4a4a4a; color: white;")
+        set_role(self.btn_ping_marker, "secondary")
         self.btn_ping_marker.clicked.connect(self.run_marker_diagnostics)
         config_layout.addWidget(self.btn_ping_marker, 3, 0)
 
         self.lbl_diag_result = QLabel("<i>Unverified</i>")
-        self.lbl_diag_result.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        set_role(self.lbl_diag_result, "muted")
         config_layout.addWidget(self.lbl_diag_result, 3, 1)
 
         self.chk_simulate = QCheckBox("Enable LSL Simulators (Dev Mode)")
@@ -125,11 +125,11 @@ class OnlineStreamingTab(QWidget):
         self.btn_save.clicked.connect(self.save_recorded_dataset)
         
         self.lbl_status = QLabel("Status: Offline")
-        self.lbl_status.setStyleSheet("font-weight: bold; color: gray;")
+        set_role(self.lbl_status, "status")
         self.lbl_pool_count = QLabel("Cache: 0 frames collected")
         
         self.lbl_last_marker = QLabel("Last Marker: [None]")
-        self.lbl_last_marker.setStyleSheet("font-weight: bold; color: #ffaa00;")
+        set_role(self.lbl_last_marker, "warn")
         self.last_marker_count = 0 
 
         ctrl_layout.addWidget(self.btn_start)
@@ -364,7 +364,7 @@ class OnlineStreamingTab(QWidget):
         self.btn_ping_marker.setEnabled(False)
         self.btn_ping_marker.setText("Pinging...")
         self.lbl_diag_result.setText("<i>Searching network...</i>")
-        self.lbl_diag_result.setStyleSheet("color: #ffaa00; font-size: 10px;")
+        set_role(self.lbl_diag_result, "warn")
 
         self.diag_worker = MarkerDiagnosticWorker(marker_target)
         self.diag_worker.diagnostic_success.connect(self._on_diag_success)
@@ -377,14 +377,14 @@ class OnlineStreamingTab(QWidget):
         operator can verify it is the expected (fresh) outlet.
         """
         self.lbl_diag_result.setText(f"<b>Host:</b> {data['hostname']}<br><b>UID:</b> {data['uid'][:8]}...")
-        self.lbl_diag_result.setStyleSheet("color: #00ff66; font-size: 10px;")
+        set_role(self.lbl_diag_result, "ok")
         self.btn_ping_marker.setText("🔍 Ping Marker Stream")
         self.btn_ping_marker.setEnabled(True)
 
     def _on_diag_failure(self, error_msg):
         """Marks the marker stream as not found and re-enables the ping button."""
         self.lbl_diag_result.setText("<i>Not Found (Check Network/Name)</i>")
-        self.lbl_diag_result.setStyleSheet("color: #ff3333; font-size: 10px;")
+        set_role(self.lbl_diag_result, "error")
         self.btn_ping_marker.setText("🔍 Ping Marker Stream")
         self.btn_ping_marker.setEnabled(True)
 

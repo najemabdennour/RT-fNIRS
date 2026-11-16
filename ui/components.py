@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QCheckBox
 )
 from PyQt5.QtCore import Qt
+from ui.themes import set_role
 
 
 class CollapsibleSection(QWidget):
@@ -19,40 +20,11 @@ class CollapsibleSection(QWidget):
         self.toggle_button = QPushButton(f"► {title}")
         self.toggle_button.setCheckable(True)
         self.toggle_button.setChecked(False)
-        self.toggle_button.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                font-weight: bold;
-                padding: 10px 14px;
-                background-color: #262626;
-                border: 1px solid #3d3d3d;
-                border-radius: 5px;
-                color: #ffffff;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #333333;
-                border-color: #4c4c4c;
-            }
-            QPushButton:checked {
-                background-color: #2d2d2d;
-                border-bottom-left-radius: 0px;
-                border-bottom-right-radius: 0px;
-            }
-        """)
+        self.toggle_button.setObjectName("SectionHeader")  # styled by the theme (ui/themes.py)
         self.toggle_button.clicked.connect(self.on_toggle_triggered)
 
         self.content_container = QWidget()
         self.content_container.setObjectName("ContentContainer")
-        self.content_container.setStyleSheet("""
-            QWidget#ContentContainer {
-                background-color: #1c1c1c;
-                border: 1px solid #3d3d3d;
-                border-top: none;
-                border-bottom-left-radius: 5px;
-                border-bottom-right-radius: 5px;
-            }
-        """)
         self.content_container.setVisible(False)
 
         self.main_layout.addWidget(self.toggle_button)
@@ -91,10 +63,10 @@ class StepDescriptionWidget(QWidget):
         layout.setSpacing(3)
 
         lbl_title = QLabel(title)
-        lbl_title.setStyleSheet("font-weight: bold; color: #ffffff; font-size: 12px;")
+        set_role(lbl_title, "title")
 
         lbl_sub = QLabel(subtitle)
-        lbl_sub.setStyleSheet("color: #b0b0b0; font-size: 10px; font-style: normal;")
+        set_role(lbl_sub, "muted")
         lbl_sub.setWordWrap(True)
 
         layout.addWidget(lbl_title)
@@ -142,26 +114,6 @@ class PipelineStepTable(QWidget):
         if show_checkpoint:
             self.table.setColumnWidth(2, 90)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1e1e1e;
-                alternate-background-color: #282828;
-                gridline-color: #383838;
-                border: 1px solid #454545;
-                border-radius: 4px;
-            }
-            QTableWidget::item {
-                border-bottom: 1px solid #2d2d2d;
-            }
-            QHeaderView::section {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                font-weight: bold;
-                padding: 8px;
-                border: 1px solid #3e3e3e;
-                font-size: 11px;
-            }
-        """)
         # Fit the table to the step count, capped at 6 visible rows (the rest scroll).
         visible_rows = min(len(steps), 6)
         self.table.setFixedHeight(row_height * visible_rows + 40)

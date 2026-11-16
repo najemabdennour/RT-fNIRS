@@ -19,8 +19,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGr
 
 import config
 from core import config_io
+from ui.themes import set_role
 
-DESCRIPTION_STYLE = "color: #9a9a9a; font-size: 10px;"
 
 # Labels for settings whose name alone is unclear (others are derived from the name).
 LABELS = {
@@ -114,7 +114,7 @@ class SettingsTab(QWidget):
         outer.addLayout(header)
 
         self.lbl_status = QLabel("")
-        self.lbl_status.setStyleSheet(DESCRIPTION_STYLE)
+        set_role(self.lbl_status, "muted")
         outer.addWidget(self.lbl_status)
 
         scroll = QScrollArea()
@@ -150,7 +150,7 @@ class SettingsTab(QWidget):
         grid.addWidget(lbl, row, 0)
         grid.addWidget(widget, row, 1)
         desc = QLabel(description)
-        desc.setStyleSheet(DESCRIPTION_STYLE)
+        set_role(desc, "muted")
         desc.setWordWrap(True)
         grid.addWidget(desc, row, 2)
 
@@ -200,10 +200,19 @@ class SettingsTab(QWidget):
             self._add_row(grid, _label(key), widget, self.cfg.comment_for('DEFAULT_PREPROC_CONFIG', key))
 
     def _add_heading(self, grid, text):
-        """A sub-heading row in a section (from a section comment in config.py)."""
-        lbl = QLabel(f"<b>{text}</b>")
+        """
+        A sub-heading row in a section (from a section comment in config.py):
+        its first line as a bold title, any further lines as a muted note.
+        """
+        title, _, note = text.partition("\n")
+        lbl = QLabel(f"<b>{title}</b>")
         lbl.setWordWrap(True)
         grid.addWidget(lbl, grid.rowCount(), 0, 1, 3)
+        if note.strip():
+            note_lbl = QLabel(" ".join(note.split()))
+            note_lbl.setWordWrap(True)
+            set_role(note_lbl, "muted")
+            grid.addWidget(note_lbl, grid.rowCount(), 0, 1, 3)
 
     def _build_extinction_table(self, grid):
         """The extinction coefficient table (wavelength, e_HbO, e_HbR) with add/remove buttons."""
@@ -259,7 +268,7 @@ class SettingsTab(QWidget):
         box = QGroupBox("Experiment profiles (EXPERIMENT_PROFILES)")
         layout = QVBoxLayout(box)
         desc = QLabel(self.cfg.comment_for('EXPERIMENT_PROFILES'))
-        desc.setStyleSheet(DESCRIPTION_STYLE)
+        set_role(desc, "muted")
         desc.setWordWrap(True)
         layout.addWidget(desc)
         self.table_profiles = QTableWidget(0, 6)

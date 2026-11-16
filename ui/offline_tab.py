@@ -17,6 +17,7 @@ from core.channel_lists import save_channel_list, load_channel_list
 from core.montage import montage_from_table, channel_geometry
 from core.io_utils import read_csv
 from ui.components import CollapsibleSection, PipelineStepTable
+from ui.themes import set_role
 
 
 class OfflineAnalysisTab(QWidget):
@@ -42,10 +43,8 @@ class OfflineAnalysisTab(QWidget):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
-        scroll_area.setStyleSheet("background-color: transparent;")
         
         scroll_content = QWidget()
-        scroll_content.setStyleSheet("background-color: transparent;")
         left_column = QVBoxLayout(scroll_content)
         left_column.setContentsMargins(0, 0, 8, 0)
         left_column.setSpacing(14)
@@ -78,7 +77,6 @@ class OfflineAnalysisTab(QWidget):
         btn_browse_out_beh.clicked.connect(lambda: self.browse_directory(self.ent_out_beh))
 
         self.btn_run_merge = QPushButton("Consolidate & Merge Session Runs")
-        self.btn_run_merge.setStyleSheet("font-weight: bold; padding: 6px;")
         self.btn_run_merge.clicked.connect(self.execute_session_merging_pipeline)
 
         io_layout.addWidget(QLabel("Raw Signals Dir:"), 0, 0)
@@ -119,7 +117,7 @@ class OfflineAnalysisTab(QWidget):
         target_layout.addWidget(self.txt_new_exp_name, 1, 1)
         
         btn_register_exp = QPushButton("Register Profile")
-        btn_register_exp.setStyleSheet("font-weight: bold; background-color: #1976d2; color: white;")
+        set_role(btn_register_exp, "primary")
         btn_register_exp.clicked.connect(self.register_custom_experiment_profile)
         target_layout.addWidget(btn_register_exp, 1, 2)
 
@@ -198,12 +196,12 @@ class OfflineAnalysisTab(QWidget):
         chan_filter_layout.addWidget(btn_load_channel_list, 0, 3)
 
         self.lbl_rejected_summary = QLabel("Last run rejected: 0 channel(s) via SCI / SQA / short-channel rejection.")
-        self.lbl_rejected_summary.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        set_role(self.lbl_rejected_summary, "muted")
         chan_filter_layout.addWidget(self.lbl_rejected_summary, 1, 0, 1, 3)
 
         self.btn_save_rejected = QPushButton("Save Rejected Channels...")
         self.btn_save_rejected.setEnabled(False)
-        self.btn_save_rejected.setStyleSheet("background-color: #383838; color: white;")
+        set_role(self.btn_save_rejected, "secondary")
         self.btn_save_rejected.clicked.connect(self.save_rejected_channels)
         chan_filter_layout.addWidget(self.btn_save_rejected, 1, 3)
 
@@ -233,7 +231,7 @@ class OfflineAnalysisTab(QWidget):
             "The default (8.4 mm) is the optimum short-separation distance for adults from Brigadoi & Cooper "
             "(2015), Neurophotonics 2(2):025005; raise it to your montage's shortest pairs (e.g. 11 mm for LUMO)."
         )
-        short_note.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        set_role(short_note, "muted")
         short_note.setWordWrap(True)
         short_layout.addWidget(short_note, 2, 0, 1, 4)
         prep_main_layout.addWidget(short_group)
@@ -264,7 +262,7 @@ class OfflineAnalysisTab(QWidget):
         prep_main_layout.addLayout(param_grid)
 
         self.btn_run_preproc = QPushButton("Execute Sequential Pipeline Routine")
-        self.btn_run_preproc.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 10px; font-size: 12px;")
+        set_role(self.btn_run_preproc, "success")
         self.btn_run_preproc.clicked.connect(self.execute_preprocessing_only)
         prep_main_layout.addWidget(self.btn_run_preproc)
         prep_section.set_content_layout(prep_main_layout)
@@ -280,18 +278,7 @@ class OfflineAnalysisTab(QWidget):
         
         self.txt_console_logs = QTextEdit()
         self.txt_console_logs.setReadOnly(True)
-        self.txt_console_logs.setStyleSheet("""
-            QTextEdit {
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 12px;
-                background-color: #0c0c0c;
-                color: #00ff66;
-                border: 2px solid #222222;
-                border-radius: 6px;
-                padding: 10px;
-                line-height: 140%;
-            }
-        """)
+        set_role(self.txt_console_logs, "console")
         log_layout.addWidget(self.txt_console_logs)
         master_layout.addWidget(log_group, stretch=5)
 

@@ -25,6 +25,7 @@ from core.decoders import DECODER_REGISTRY, decoder_selection
 from core.channel_lists import load_channel_list
 from core.io_utils import read_csv, find_index_columns
 from ui.components import CollapsibleSection, PipelineStepTable
+from ui.themes import set_role
 
 
 class NeurofeedbackWorker(QThread):
@@ -444,7 +445,6 @@ class NeurofeedbackTab(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.NoFrame)
-        left_scroll.setStyleSheet("background-color: transparent;")
 
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
@@ -524,7 +524,7 @@ class NeurofeedbackTab(QWidget):
         chan_filter_layout.addWidget(btn_browse_channel_filter, 0, 2)
 
         self.lbl_channel_filter_count = QLabel("0 channel(s) loaded")
-        self.lbl_channel_filter_count.setStyleSheet("color: #b0b0b0; font-size: 10px;")
+        set_role(self.lbl_channel_filter_count, "muted")
         chan_filter_layout.addWidget(self.lbl_channel_filter_count, 1, 0, 1, 3)
 
         note = QLabel(
@@ -533,7 +533,7 @@ class NeurofeedbackTab(QWidget):
             "re-decide rejections on each short live buffer (which can change the feature "
             "set from trial to trial). Enable the 'Manual Channel Filter' step below to apply it."
         )
-        note.setStyleSheet("color: #999999; font-size: 10px;")
+        set_role(note, "muted")
         note.setWordWrap(True)
         chan_filter_layout.addWidget(note, 2, 0, 1, 3)
 
@@ -623,7 +623,7 @@ class NeurofeedbackTab(QWidget):
         ctrl_group = QGroupBox("Execution Controls")
         ctrl_layout = QVBoxLayout(ctrl_group)
         self.btn_start = QPushButton("Start Neurofeedback Loop")
-        self.btn_start.setStyleSheet("background-color: #2e7d32; color: white; padding: 10px;")
+        set_role(self.btn_start, "success")
         self.btn_start.clicked.connect(self.start_engine)
         self.btn_stop = QPushButton("Stop")
         self.btn_stop.setEnabled(False)
@@ -652,7 +652,7 @@ class NeurofeedbackTab(QWidget):
         right_layout = QVBoxLayout(right_panel)
         self.txt_logs = QTextEdit()
         self.txt_logs.setReadOnly(True)
-        self.txt_logs.setStyleSheet("background-color: #0c0c0c; color: #00ff66; font-family: monospace;")
+        set_role(self.txt_logs, "console")
         right_layout.addWidget(self.txt_logs)
         splitter.addWidget(right_panel)
 
